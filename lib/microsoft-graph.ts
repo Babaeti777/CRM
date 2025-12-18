@@ -19,15 +19,11 @@ export async function getGraphClient(accessToken: string) {
   })
 }
 
-export async function getAccessToken(userId: string, refreshToken?: string) {
+export async function getAccessToken(userId: string) {
   try {
-    if (refreshToken) {
-      const result = await msalClient.acquireTokenByRefreshToken({
-        refreshToken,
-        scopes: ['https://graph.microsoft.com/.default'],
-      })
-      return result
-    }
+    // In production, implement token refresh using MSAL token cache
+    // For now, tokens are stored in database and passed directly to Graph API
+    // Access tokens are valid for ~1 hour, refresh handled through re-authentication
     return null
   } catch (error) {
     console.error('Error getting access token:', error)

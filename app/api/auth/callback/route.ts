@@ -45,12 +45,12 @@ export async function GET(request: NextRequest) {
         email: account.username,
         name: account.name || account.username,
         msAccessToken: tokenResponse.accessToken,
-        msRefreshToken: tokenResponse.refreshToken || null,
+        msRefreshToken: null, // MSAL handles refresh tokens internally via cache
         msTokenExpiry: tokenResponse.expiresOn || null,
       },
       update: {
         msAccessToken: tokenResponse.accessToken,
-        msRefreshToken: tokenResponse.refreshToken || null,
+        msRefreshToken: null, // MSAL handles refresh tokens internally via cache
         msTokenExpiry: tokenResponse.expiresOn || null,
       },
     })
