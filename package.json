@@ -1,0 +1,40 @@
+{
+  "name": "crm-bid-tracking-system",
+  "version": "1.0.0",
+  "description": "Bid and CRM tracking system with Microsoft integration",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.7.1",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@azure/msal-node": "^2.5.0",
+    "next": "^14.0.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "openai": "^4.20.1",
+    "multer": "^1.4.5-lts.1",
+    "axios": "^1.6.2",
+    "date-fns": "^3.0.0",
+    "react-dropzone": "^14.2.3",
+    "tailwindcss": "^3.3.6",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "@types/multer": "^1.4.11",
+    "typescript": "^5.3.3",
+    "prisma": "^5.7.1",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "^14.0.4"
+  }
+}

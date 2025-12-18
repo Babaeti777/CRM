@@ -1,0 +1,176 @@
+// Prisma Schema for CRM Bid Tracking System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Division/Department model
+model Division {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bids        Bid[]
+  subcontractors SubcontractorDivision[]
+}
+
+// Subcontractor model
+model Subcontractor {
+  id          String   @id @default(uuid())
+  name        String
+  email       String   @unique
+  phone       String?
+  company     String?
+  address     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  divisions   SubcontractorDivision[]
+  responses   BidResponse[]
+}
+
+// Junction table for Subcontractor-Division relationship
+model SubcontractorDivision {
+  id              String        @id @default(uuid())
+  subcontractorId String
+  divisionId      String
+
+  subcontractor   Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
+  division        Division      @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+
+  @@unique([subcontractorId, divisionId])
+}
+
+// Bid model
+model Bid {
+  id                    String       @id @default(uuid())
+  title                 String
+  description           String?
+  divisionId            String
+  status                BidStatus    @default(DRAFT)
+  dueDate               DateTime?
+  aiSuggestedDivision   String?
+  divisionConfirmed     Boolean      @default(false)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  division              Division     @relation(fields: [divisionId], references: [id])
+  documents             Document[]
+  responses             BidResponse[]
+  calendarEvents        CalendarEvent[]
+  emailThreads          EmailThread[]
+}
+
+enum BidStatus {
+  DRAFT
+  PENDING_DIVISION
+  ACTIVE
+  CLOSED
+  AWARDED
+  CANCELLED
+}
+
+// Document model
+model Document {
+  id          String   @id @default(uuid())
+  bidId       String
+  fileName    String
+  filePath    String
+  fileSize    Int
+  mimeType    String
+  uploadedAt  DateTime @default(now())
+
+  bid         Bid      @relation(fields: [bidId], references: [id], onDelete: Cascade)
+}
+
+// Bid Response from Subcontractors
+model BidResponse {
+  id              String           @id @default(uuid())
+  bidId           String
+  subcontractorId String
+  status          ResponseStatus   @default(PENDING)
+  amount          Float?
+  notes           String?
+  submittedAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  bid             Bid              @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  subcontractor   Subcontractor    @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
+
+  @@unique([bidId, subcontractorId])
+}
+
+enum ResponseStatus {
+  PENDING
+  VIEWED
+  INTERESTED
+  QUOTED
+  DECLINED
+  ACCEPTED
+}
+
+// Calendar Event (Microsoft Calendar Integration)
+model CalendarEvent {
+  id              String   @id @default(uuid())
+  bidId           String
+  msEventId       String?  @unique
+  title           String
+  description     String?
+  startTime       DateTime
+  endTime         DateTime
+  location        String?
+  attendees       String[] // Store as JSON array of emails
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bid             Bid      @relation(fields: [bidId], references: [id], onDelete: Cascade)
+}
+
+// Email Thread (Outlook Integration)
+model EmailThread {
+  id              String   @id @default(uuid())
+  bidId           String
+  msConversationId String? @unique
+  subject         String
+  recipients      String[] // Store as JSON array
+  lastMessageAt   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bid             Bid      @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  messages        EmailMessage[]
+}
+
+model EmailMessage {
+  id              String      @id @default(uuid())
+  threadId        String
+  msMessageId     String?     @unique
+  from            String
+  to              String[]
+  subject         String
+  body            String
+  isRead          Boolean     @default(false)
+  sentAt          DateTime
+
+  thread          EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+// User model for authentication
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  name            String?
+  msAccessToken   String?
+  msRefreshToken  String?
+  msTokenExpiry   DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
