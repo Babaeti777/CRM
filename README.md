@@ -79,6 +79,9 @@ npx prisma db seed
 
 ### 3. Microsoft Azure Setup
 
+**📘 See detailed guide: [AZURE_SETUP.md](./AZURE_SETUP.md)**
+
+Quick steps:
 1. Go to [Azure Portal](https://portal.azure.com)
 2. Register a new application in Azure AD
 3. Add these redirect URIs:
@@ -91,10 +94,17 @@ npx prisma db seed
 5. Generate a client secret
 6. Copy Client ID, Tenant ID, and Client Secret
 
+**Need help?** Follow the complete step-by-step guide in [AZURE_SETUP.md](./AZURE_SETUP.md)
+
 ### 4. OpenAI Setup
 
+**📘 See detailed guide: [OPENAI_SETUP.md](./OPENAI_SETUP.md)**
+
+Quick steps:
 1. Get API key from [OpenAI Platform](https://platform.openai.com)
 2. Ensure you have access to GPT-4
+
+**Cost:** ~$1-5/month for typical usage. See [OPENAI_SETUP.md](./OPENAI_SETUP.md) for details.
 
 ### 5. Environment Variables
 
