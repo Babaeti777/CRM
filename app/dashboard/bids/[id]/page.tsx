@@ -119,8 +119,8 @@ export default function BidDetail({ params }: { params: Promise<{ id: string }> 
   }
 
   const notifySubcontractors = async () => {
-    if (!user?.hasValidToken) {
-      alert('Please sign in with Microsoft to send notifications')
+    if (!user) {
+      alert('Please sign in to send notifications')
       return
     }
 
@@ -132,7 +132,6 @@ export default function BidDetail({ params }: { params: Promise<{ id: string }> 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          accessToken: user.accessToken,
           message: `Please review the bid opportunity: ${bid?.title}`,
           createEvent: true,
         }),
@@ -143,7 +142,11 @@ export default function BidDetail({ params }: { params: Promise<{ id: string }> 
         fetchBid()
       } else {
         const errorData = await response.json()
-        alert(errorData.error || 'Failed to notify subcontractors')
+        if (errorData.error?.includes('access token')) {
+          alert('Your Microsoft session has expired. Please sign in again.')
+        } else {
+          alert(errorData.error || 'Failed to notify subcontractors')
+        }
       }
     } catch (error) {
       console.error('Error notifying subcontractors:', error)

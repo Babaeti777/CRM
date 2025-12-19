@@ -1,15 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail, createCalendarEvent } from '@/lib/microsoft-graph'
+import { getCurrentUser, getValidAccessToken } from '@/lib/auth'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check authentication
+    const user = await getCurrentUser()
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
     const { id: bidId } = await params
     const body = await request.json()
-    const { accessToken, message, createEvent } = body
+    const { message, createEvent } = body
+
+    // Get valid access token with automatic refresh
+    const tokenResult = await getValidAccessToken()
+    if (!tokenResult.isValid) {
+      return NextResponse.json(
+        { error: 'Valid Microsoft access token required. Please sign in again.' },
+        { status: 401 }
+      )
+    }
+    const accessToken = tokenResult.token!
 
     // Get bid with division and subcontractors
     const bid = await prisma.bid.findUnique({
@@ -77,71 +97,69 @@ export async function POST(
       )
     )
 
-    // Send emails if access token provided
-    if (accessToken) {
-      const emailSubject = `New Bid Opportunity: ${bid.title}`
-      const emailBody = `
-        <h2>${bid.title}</h2>
-        <p>${bid.description || ''}</p>
-        <p><strong>Division:</strong> ${bid.division.name}</p>
-        ${bid.dueDate ? `<p><strong>Due Date:</strong> ${new Date(bid.dueDate).toLocaleDateString()}</p>` : ''}
-        <p>${message || 'Please review this bid opportunity and respond at your earliest convenience.'}</p>
-        <p>Documents attached: ${bid.documents.length}</p>
-      `
+    // Send emails to subcontractors
+    const emailSubject = `New Bid Opportunity: ${bid.title}`
+    const emailBody = `
+      <h2>${bid.title}</h2>
+      <p>${bid.description || ''}</p>
+      <p><strong>Division:</strong> ${bid.division.name}</p>
+      ${bid.dueDate ? `<p><strong>Due Date:</strong> ${new Date(bid.dueDate).toLocaleDateString()}</p>` : ''}
+      <p>${message || 'Please review this bid opportunity and respond at your earliest convenience.'}</p>
+      <p>Documents attached: ${bid.documents.length}</p>
+    `
 
-      try {
-        await sendEmail(accessToken, {
-          to: subcontractors.map((sc) => sc.email),
+    try {
+      await sendEmail(accessToken, {
+        to: subcontractors.map((sc) => sc.email),
+        subject: emailSubject,
+        body: emailBody,
+      })
+
+      // Create email thread record
+      await prisma.emailThread.create({
+        data: {
+          bidId: bid.id,
           subject: emailSubject,
-          body: emailBody,
+          recipients: subcontractors.map((sc) => sc.email),
+          lastMessageAt: new Date(),
+        },
+      })
+    } catch (emailError) {
+      console.error('Error sending emails:', emailError)
+    }
+
+    // Optionally create calendar event
+    if (createEvent && bid.dueDate) {
+      try {
+        const eventStart = new Date(bid.dueDate)
+        eventStart.setDate(eventStart.getDate() - 1) // Day before due date
+        eventStart.setHours(9, 0, 0, 0)
+
+        const eventEnd = new Date(eventStart)
+        eventEnd.setHours(10, 0, 0, 0)
+
+        const calendarEvent = await createCalendarEvent(accessToken, {
+          subject: `Bid Due: ${bid.title}`,
+          body: `Reminder: Bid responses due for ${bid.title}`,
+          start: eventStart,
+          end: eventEnd,
+          attendees: subcontractors.map((sc) => sc.email),
         })
 
-        // Create email thread record
-        await prisma.emailThread.create({
+        // Save calendar event to database
+        await prisma.calendarEvent.create({
           data: {
             bidId: bid.id,
-            subject: emailSubject,
-            recipients: subcontractors.map((sc) => sc.email),
-            lastMessageAt: new Date(),
+            msEventId: calendarEvent.id,
+            title: `Bid Due: ${bid.title}`,
+            description: `Reminder: Bid responses due for ${bid.title}`,
+            startTime: eventStart,
+            endTime: eventEnd,
+            attendees: subcontractors.map((sc) => sc.email),
           },
         })
-      } catch (emailError) {
-        console.error('Error sending emails:', emailError)
-      }
-
-      // Optionally create calendar event
-      if (createEvent && bid.dueDate) {
-        try {
-          const eventStart = new Date(bid.dueDate)
-          eventStart.setDate(eventStart.getDate() - 1) // Day before due date
-          eventStart.setHours(9, 0, 0, 0)
-
-          const eventEnd = new Date(eventStart)
-          eventEnd.setHours(10, 0, 0, 0)
-
-          const calendarEvent = await createCalendarEvent(accessToken, {
-            subject: `Bid Due: ${bid.title}`,
-            body: `Reminder: Bid responses due for ${bid.title}`,
-            start: eventStart,
-            end: eventEnd,
-            attendees: subcontractors.map((sc) => sc.email),
-          })
-
-          // Save calendar event to database
-          await prisma.calendarEvent.create({
-            data: {
-              bidId: bid.id,
-              msEventId: calendarEvent.id,
-              title: `Bid Due: ${bid.title}`,
-              description: `Reminder: Bid responses due for ${bid.title}`,
-              startTime: eventStart,
-              endTime: eventEnd,
-              attendees: subcontractors.map((sc) => sc.email),
-            },
-          })
-        } catch (eventError) {
-          console.error('Error creating calendar event:', eventError)
-        }
+      } catch (eventError) {
+        console.error('Error creating calendar event:', eventError)
       }
     }
 

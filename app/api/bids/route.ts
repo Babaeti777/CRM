@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getCurrentUser } from '@/lib/auth'
 
 // Mark this route as dynamic (not static)
 export const dynamic = 'force-dynamic'
@@ -10,6 +11,15 @@ const VALID_STATUSES = ['DRAFT', 'PENDING_DIVISION', 'ACTIVE', 'CLOSED', 'AWARDE
 // GET all bids
 export async function GET(request: NextRequest) {
   try {
+    // Check authentication
+    const user = await getCurrentUser()
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get('status')
     const divisionId = searchParams.get('divisionId')
@@ -56,6 +66,15 @@ export async function GET(request: NextRequest) {
 // POST create new bid
 export async function POST(request: NextRequest) {
   try {
+    // Check authentication
+    const user = await getCurrentUser()
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
     const { title, description, divisionId, dueDate, status } = body
 

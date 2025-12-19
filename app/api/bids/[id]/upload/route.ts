@@ -4,18 +4,102 @@ import { suggestDivision } from '@/lib/openai'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
+import { getCurrentUser } from '@/lib/auth'
+
+// File upload configuration
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+]
+const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt', '.png', '.jpg', '.jpeg']
+
+/**
+ * Sanitize filename to prevent path traversal attacks
+ */
+function sanitizeFilename(filename: string): string {
+  // Remove path separators and null bytes
+  return filename
+    .replace(/[/\\]/g, '')
+    .replace(/\0/g, '')
+    .replace(/\.\./g, '')
+    .trim()
+}
+
+/**
+ * Validate file type by extension and MIME type
+ */
+function isValidFileType(filename: string, mimeType: string): boolean {
+  const ext = path.extname(filename).toLowerCase()
+  const isValidExtension = ALLOWED_EXTENSIONS.includes(ext)
+  const isValidMimeType = ALLOWED_MIME_TYPES.includes(mimeType)
+
+  return isValidExtension && isValidMimeType
+}
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check authentication
+    const user = await getCurrentUser()
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
     const { id: bidId } = await params
+
+    // Verify bid exists
+    const existingBid = await prisma.bid.findUnique({
+      where: { id: bidId },
+    })
+
+    if (!existingBid) {
+      return NextResponse.json(
+        { error: 'Bid not found' },
+        { status: 404 }
+      )
+    }
+
     const formData = await request.formData()
     const file = formData.get('file') as File
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB` },
+        { status: 400 }
+      )
+    }
+
+    // Validate file type
+    if (!isValidFileType(file.name, file.type)) {
+      return NextResponse.json(
+        { error: `Invalid file type. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    // Sanitize filename
+    const sanitizedName = sanitizeFilename(file.name)
+    if (!sanitizedName) {
+      return NextResponse.json(
+        { error: 'Invalid filename' },
+        { status: 400 }
+      )
     }
 
     // Create uploads directory if it doesn't exist
@@ -24,10 +108,10 @@ export async function POST(
       await mkdir(uploadsDir, { recursive: true })
     }
 
-    // Save file
+    // Save file with timestamped sanitized name
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
-    const fileName = `${Date.now()}-${file.name}`
+    const fileName = `${Date.now()}-${sanitizedName}`
     const filePath = path.join(uploadsDir, fileName)
     await writeFile(filePath, buffer)
 
@@ -35,7 +119,7 @@ export async function POST(
     const document = await prisma.document.create({
       data: {
         bidId,
-        fileName: file.name,
+        fileName: sanitizedName,
         filePath: filePath,
         fileSize: file.size,
         mimeType: file.type,

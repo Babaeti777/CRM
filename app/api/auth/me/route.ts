@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, getValidAccessToken } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,16 +11,16 @@ export async function GET() {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    // Check if token is expired
-    const isTokenValid = user.msAccessToken &&
-      (!user.msTokenExpiry || new Date(user.msTokenExpiry) > new Date())
+    // Get valid access token with automatic refresh
+    const tokenResult = await getValidAccessToken()
 
     return NextResponse.json({
       id: user.id,
       email: user.email,
       name: user.name,
-      hasValidToken: isTokenValid,
-      accessToken: isTokenValid ? user.msAccessToken : null,
+      hasValidToken: tokenResult.isValid,
+      accessToken: tokenResult.token,
+      needsReauth: tokenResult.needsReauth,
     })
   } catch (error) {
     console.error('Error getting current user:', error)
