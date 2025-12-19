@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       `client_id=${process.env.MICROSOFT_CLIENT_ID}` +
       `&response_type=code` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&scope=${encodeURIComponent('https://graph.microsoft.com/Calendars.ReadWrite https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Read User.Read')}` +
+      `&scope=${encodeURIComponent('User.Read Calendars.ReadWrite Mail.ReadWrite Mail.Send offline_access')}` +
       `&response_mode=query`
 
     console.log('Auth URL:', authUrl)

@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     const tokenResponse = await msalClient.acquireTokenByCode({
       code,
-      scopes: ['https://graph.microsoft.com/.default'],
+      scopes: ['User.Read', 'Calendars.ReadWrite', 'Mail.ReadWrite', 'Mail.Send', 'offline_access'],
       redirectUri: redirectUri,
     })
 
