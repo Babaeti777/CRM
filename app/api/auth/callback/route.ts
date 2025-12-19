@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ConfidentialClientApplication } from '@azure/msal-node'
 import { prisma } from '@/lib/prisma'
 
+// Mark this route as dynamic (not static)
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 const msalConfig = {
   auth: {
     clientId: process.env.MICROSOFT_CLIENT_ID!,

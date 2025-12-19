@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// Mark this route as dynamic (not static)
+export const dynamic = 'force-dynamic'
+
 // GET all subcontractors
 export async function GET(request: NextRequest) {
   try {
