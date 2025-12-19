@@ -20,6 +20,7 @@ interface Subcontractor {
 export default function Subcontractors() {
   const [subcontractors, setSubcontractors] = useState<Subcontractor[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchSubcontractors()
@@ -29,9 +30,20 @@ export default function Subcontractors() {
     try {
       const response = await fetch('/api/subcontractors')
       const data = await response.json()
+
+      // Check if response is an error or invalid data
+      if (!response.ok || !Array.isArray(data)) {
+        setError(data.error || data.message || 'Failed to load subcontractors')
+        setSubcontractors([])
+        return
+      }
+
       setSubcontractors(data)
+      setError(null)
     } catch (error) {
       console.error('Error fetching subcontractors:', error)
+      setError('Failed to connect to server')
+      setSubcontractors([])
     } finally {
       setLoading(false)
     }
@@ -58,6 +70,16 @@ export default function Subcontractors() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {loading ? (
           <div className="text-center py-12">Loading...</div>
+        ) : error ? (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-2xl mx-auto">
+            <h2 className="text-xl font-bold text-red-900 mb-2">Database Error</h2>
+            <p className="text-red-700 mb-4">{error}</p>
+            <p className="text-sm text-red-600">
+              Make sure DATABASE_URL is set in your Vercel environment variables.
+            </p>
+          </div>
+        ) : subcontractors.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">No subcontractors found</div>
         ) : (
           <div className="bg-white rounded-lg shadow">
             <div className="overflow-x-auto">
