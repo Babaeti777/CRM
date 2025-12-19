@@ -6,40 +6,47 @@ import { prisma } from '@/lib/prisma'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const msalConfig = {
+const getMsalConfig = (redirectUri: string) => ({
   auth: {
     clientId: process.env.MICROSOFT_CLIENT_ID!,
     authority: `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}`,
     clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
   },
-}
+})
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const code = searchParams.get('code')
 
+    // Get the base URL
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
+                    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` :
+                    `https://${request.headers.get('host')}`)
+
     if (!code) {
-      return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}?error=no_code`)
+      return NextResponse.redirect(`${baseUrl}?error=no_code`)
     }
 
-    const msalClient = new ConfidentialClientApplication(msalConfig)
+    const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${baseUrl}/api/auth/callback`
+
+    const msalClient = new ConfidentialClientApplication(getMsalConfig(redirectUri))
 
     const tokenResponse = await msalClient.acquireTokenByCode({
       code,
       scopes: ['https://graph.microsoft.com/.default'],
-      redirectUri: process.env.MICROSOFT_REDIRECT_URI!,
+      redirectUri: redirectUri,
     })
 
     if (!tokenResponse) {
-      return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}?error=token_failed`)
+      return NextResponse.redirect(`${baseUrl}?error=token_failed`)
     }
 
     // Get user info from token
     const account = tokenResponse.account
 
     if (!account) {
-      return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}?error=no_account`)
+      return NextResponse.redirect(`${baseUrl}?error=no_account`)
     }
 
     // Save or update user
@@ -60,7 +67,7 @@ export async function GET(request: NextRequest) {
     })
 
     // In production, set httpOnly cookie with session token
-    const response = NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard`)
+    const response = NextResponse.redirect(`${baseUrl}/dashboard`)
     response.cookies.set('user_id', user.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -71,6 +78,8 @@ export async function GET(request: NextRequest) {
     return response
   } catch (error) {
     console.error('Error in auth callback:', error)
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}?error=auth_failed`)
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
+                    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+    return NextResponse.redirect(`${baseUrl}?error=auth_failed`)
   }
 }
