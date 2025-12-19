@@ -4,15 +4,16 @@ import { sendEmail, createCalendarEvent } from '@/lib/microsoft-graph'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: bidId } = await params
     const body = await request.json()
     const { accessToken, message, createEvent } = body
 
     // Get bid with division and subcontractors
     const bid = await prisma.bid.findUnique({
-      where: { id: params.id },
+      where: { id: bidId },
       include: {
         division: {
           include: {
@@ -29,6 +30,13 @@ export async function POST(
 
     if (!bid) {
       return NextResponse.json({ error: 'Bid not found' }, { status: 404 })
+    }
+
+    if (!bid.division) {
+      return NextResponse.json(
+        { error: 'Bid division not found' },
+        { status: 404 }
+      )
     }
 
     if (!bid.divisionConfirmed) {

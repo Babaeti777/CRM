@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const getMsalConfig = (redirectUri: string) => ({
+const getMsalConfig = () => ({
   auth: {
     clientId: process.env.MICROSOFT_CLIENT_ID!,
     authority: `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}`,
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${baseUrl}/api/auth/callback`
 
-    const msalClient = new ConfidentialClientApplication(getMsalConfig(redirectUri))
+    const msalClient = new ConfidentialClientApplication(getMsalConfig())
 
     const tokenResponse = await msalClient.acquireTokenByCode({
       code,

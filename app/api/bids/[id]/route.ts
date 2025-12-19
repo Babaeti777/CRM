@@ -4,11 +4,12 @@ import { prisma } from '@/lib/prisma'
 // GET single bid
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const bid = await prisma.bid.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         division: true,
         documents: true,
@@ -37,9 +38,10 @@ export async function GET(
 // PATCH update bid
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
     const {
       title,
@@ -63,7 +65,7 @@ export async function PATCH(
       updateData.aiSuggestedDivision = aiSuggestedDivision
 
     const bid = await prisma.bid.update({
-      where: { id: params.id },
+      where: { id },
       data: updateData,
       include: {
         division: true,
@@ -89,11 +91,12 @@ export async function PATCH(
 // DELETE bid
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     await prisma.bid.delete({
-      where: { id: params.id },
+      where: { id },
     })
 
     return NextResponse.json({ message: 'Bid deleted successfully' })

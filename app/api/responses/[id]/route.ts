@@ -4,13 +4,14 @@ import { prisma } from '@/lib/prisma'
 // PATCH update response
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
     const { status, amount, notes } = body
 
-    const updateData: any = {}
+    const updateData: Record<string, unknown> = {}
     if (status !== undefined) updateData.status = status
     if (amount !== undefined) updateData.amount = amount
     if (notes !== undefined) updateData.notes = notes
@@ -20,7 +21,7 @@ export async function PATCH(
     }
 
     const response = await prisma.bidResponse.update({
-      where: { id: params.id },
+      where: { id },
       data: updateData,
       include: {
         bid: true,

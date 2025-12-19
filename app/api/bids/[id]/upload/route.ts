@@ -7,9 +7,10 @@ import { existsSync } from 'fs'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: bidId } = await params
     const formData = await request.formData()
     const file = formData.get('file') as File
 
@@ -18,7 +19,7 @@ export async function POST(
     }
 
     // Create uploads directory if it doesn't exist
-    const uploadsDir = path.join(process.cwd(), 'uploads', params.id)
+    const uploadsDir = path.join(process.cwd(), 'uploads', bidId)
     if (!existsSync(uploadsDir)) {
       await mkdir(uploadsDir, { recursive: true })
     }
@@ -33,7 +34,7 @@ export async function POST(
     // Create document record
     const document = await prisma.document.create({
       data: {
-        bidId: params.id,
+        bidId,
         fileName: file.name,
         filePath: filePath,
         fileSize: file.size,
@@ -52,7 +53,7 @@ export async function POST(
 
     // Get AI suggestion if this is the first document
     const bid = await prisma.bid.findUnique({
-      where: { id: params.id },
+      where: { id: bidId },
       include: { documents: true },
     })
 
@@ -70,7 +71,7 @@ export async function POST(
 
         if (suggestedDivision) {
           await prisma.bid.update({
-            where: { id: params.id },
+            where: { id: bidId },
             data: {
               aiSuggestedDivision: JSON.stringify(suggestion),
               status: 'PENDING_DIVISION',
