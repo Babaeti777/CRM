@@ -17,12 +17,6 @@ export async function GET(
             subcontractor: true,
           },
         },
-        calendarEvents: true,
-        emailThreads: {
-          include: {
-            messages: true,
-          },
-        },
       },
     })
 

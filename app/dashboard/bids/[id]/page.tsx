@@ -85,13 +85,16 @@ export default function BidDetail({ params }: { params: { id: string } }) {
   const notifySubcontractors = async () => {
     setNotifying(true)
     try {
+      // TODO: This feature is incomplete - need to get real access token from authenticated user
+      // Currently passes empty accessToken, so emails/calendar events won't be sent
+      // To fix: Implement proper authentication and store access token in user session
       const response = await fetch(`/api/bids/${params.id}/notify-subcontractors`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          accessToken: '', // In production, get from authenticated user session
+          accessToken: '', // FIXME: Get from authenticated user session
           message: `Please review the bid opportunity: ${bid?.title}`,
           createEvent: true,
         }),
@@ -108,21 +111,6 @@ export default function BidDetail({ params }: { params: { id: string } }) {
       alert('Failed to notify subcontractors')
     } finally {
       setNotifying(false)
-    }
-  }
-
-  const updateResponseStatus = async (responseId: string, status: string) => {
-    try {
-      await fetch(`/api/responses/${responseId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status }),
-      })
-      fetchBid()
-    } catch (error) {
-      console.error('Error updating response:', error)
     }
   }
 
@@ -305,24 +293,6 @@ export default function BidDetail({ params }: { params: { id: string } }) {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="font-semibold text-lg mb-4">Quick Actions</h3>
-              <div className="space-y-2">
-                <button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded">
-                  Upload Document
-                </button>
-                <button className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded">
-                  Send Email
-                </button>
-                <button className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded">
-                  Create Calendar Event
-                </button>
-                <button className="w-full bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded">
-                  Edit Bid
-                </button>
-              </div>
-            </div>
-
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="font-semibold text-lg mb-4">Statistics</h3>
               <div className="space-y-3">

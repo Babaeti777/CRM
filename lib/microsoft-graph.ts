@@ -1,15 +1,4 @@
 import { Client } from '@microsoft/microsoft-graph-client'
-import { ConfidentialClientApplication } from '@azure/msal-node'
-
-const msalConfig = {
-  auth: {
-    clientId: process.env.MICROSOFT_CLIENT_ID!,
-    authority: `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}`,
-    clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
-  },
-}
-
-const msalClient = new ConfidentialClientApplication(msalConfig)
 
 export async function getGraphClient(accessToken: string) {
   return Client.init({
@@ -17,18 +6,6 @@ export async function getGraphClient(accessToken: string) {
       done(null, accessToken)
     },
   })
-}
-
-export async function getAccessToken(userId: string) {
-  try {
-    // In production, implement token refresh using MSAL token cache
-    // For now, tokens are stored in database and passed directly to Graph API
-    // Access tokens are valid for ~1 hour, refresh handled through re-authentication
-    return null
-  } catch (error) {
-    console.error('Error getting access token:', error)
-    return null
-  }
 }
 
 export async function createCalendarEvent(

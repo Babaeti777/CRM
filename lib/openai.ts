@@ -58,36 +58,3 @@ Respond in JSON format:
   }
 }
 
-export async function analyzeBidDocument(documentText: string) {
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview',
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are an expert in analyzing construction bid documents. Extract key information.',
-        },
-        {
-          role: 'user',
-          content: `Analyze this bid document and extract key information:
-
-${documentText.substring(0, 3000)}
-
-Provide a JSON response with:
-- projectName
-- bidDeadline (if mentioned)
-- scopeOfWork
-- keyRequirements (array)
-- estimatedValue (if mentioned)`,
-        },
-      ],
-      response_format: { type: 'json_object' },
-    })
-
-    return JSON.parse(response.choices[0].message.content || '{}')
-  } catch (error) {
-    console.error('Error analyzing document:', error)
-    return null
-  }
-}
