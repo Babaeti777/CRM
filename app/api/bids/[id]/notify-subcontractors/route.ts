@@ -67,7 +67,7 @@ export async function POST(
     }
 
     const subcontractors = bid.division.subcontractors.map(
-      (sc) => sc.subcontractor
+      (sc: { subcontractor: { id: string; name: string; email: string; phone: string | null; company: string | null } }) => sc.subcontractor
     )
 
     if (subcontractors.length === 0) {
@@ -79,7 +79,7 @@ export async function POST(
 
     // Create bid responses for each subcontractor
     const responses = await Promise.all(
-      subcontractors.map((subcontractor) =>
+      subcontractors.map((subcontractor: { id: string; name: string; email: string }) =>
         prisma.bidResponse.upsert({
           where: {
             bidId_subcontractorId: {
@@ -110,7 +110,7 @@ export async function POST(
 
     try {
       await sendEmail(accessToken, {
-        to: subcontractors.map((sc) => sc.email),
+        to: subcontractors.map((sc: { email: string }) => sc.email),
         subject: emailSubject,
         body: emailBody,
       })
@@ -120,7 +120,7 @@ export async function POST(
         data: {
           bidId: bid.id,
           subject: emailSubject,
-          recipients: subcontractors.map((sc) => sc.email),
+          recipients: subcontractors.map((sc: { email: string }) => sc.email),
           lastMessageAt: new Date(),
         },
       })
@@ -143,7 +143,7 @@ export async function POST(
           body: `Reminder: Bid responses due for ${bid.title}`,
           start: eventStart,
           end: eventEnd,
-          attendees: subcontractors.map((sc) => sc.email),
+          attendees: subcontractors.map((sc: { email: string }) => sc.email),
         })
 
         // Save calendar event to database
@@ -155,7 +155,7 @@ export async function POST(
             description: `Reminder: Bid responses due for ${bid.title}`,
             startTime: eventStart,
             endTime: eventEnd,
-            attendees: subcontractors.map((sc) => sc.email),
+            attendees: subcontractors.map((sc: { email: string }) => sc.email),
           },
         })
       } catch (eventError) {

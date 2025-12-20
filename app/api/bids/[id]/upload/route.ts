@@ -143,14 +143,14 @@ export async function POST(
 
     if (bid && bid.documents.length === 1 && !bid.divisionConfirmed) {
       const divisions = await prisma.division.findMany()
-      const divisionNames = divisions.map((d) => d.name)
+      const divisionNames = divisions.map((d: { name: string }) => d.name)
 
       if (divisionNames.length > 0) {
         const suggestion = await suggestDivision(documentText, divisionNames)
 
         // Find the suggested division
         const suggestedDivision = divisions.find(
-          (d) => d.name === suggestion.division
+          (d: { id: string; name: string }) => d.name === suggestion.division
         )
 
         if (suggestedDivision) {
