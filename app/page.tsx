@@ -1,76 +1,40 @@
 'use client'
 
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
-
-interface HealthStatus {
-  status: string
-  config: {
-    database: { configured: boolean; error?: string }
-    microsoft: { configured: boolean; error?: string }
-    openai: { configured: boolean; error?: string }
-  }
-  instructions?: {
-    message: string
-    required: string[]
-    optional: string[]
-  }
-}
+import { signIn } from 'next-auth/react'
 
 function HomeContent() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null)
 
   useEffect(() => {
-    // Check for error in URL params
     const urlError = searchParams.get('error')
-    const urlMessage = searchParams.get('message')
     if (urlError) {
-      setError(urlMessage || getErrorMessage(urlError))
+      setError(getErrorMessage(urlError))
     }
-
-    // Check configuration status
-    fetch('/api/health')
-      .then((res) => res.json())
-      .then((data) => setHealthStatus(data))
-      .catch(() => {
-        // Ignore health check errors
-      })
   }, [searchParams])
 
   function getErrorMessage(code: string): string {
     const messages: Record<string, string> = {
-      no_code: 'No authorization code received from Microsoft',
-      token_failed: 'Failed to get access token from Microsoft',
-      no_account: 'Could not retrieve account information',
-      auth_failed: 'Authentication failed. Please try again.',
-      config_error: 'Server configuration error. Please contact administrator.',
-      access_denied: 'Access denied. You may need to grant permissions.',
-      invalid_client: 'Invalid client configuration. Check Azure AD settings.',
+      Configuration: 'Authentication not configured. Please contact administrator.',
+      AccessDenied: 'Access denied. You may need different permissions.',
+      Verification: 'Email verification failed.',
     }
     return messages[code] || `Authentication error: ${code}`
   }
 
-  const handleSignIn = () => {
+  const handleSignIn = async () => {
     setError(null)
     setIsLoading(true)
-    window.location.href = '/api/auth/microsoft'
-  }
-
-  const handleDashboard = () => {
-    router.push('/dashboard')
+    await signIn('google', { callbackUrl: '/dashboard' })
   }
 
   const dismissError = () => {
     setError(null)
-    // Clear URL params
     window.history.replaceState({}, '', '/')
   }
-
-  const isConfigured = healthStatus?.status === 'healthy'
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
@@ -93,33 +57,6 @@ function HomeContent() {
         </div>
       )}
 
-      {/* Configuration Warning */}
-      {healthStatus && !isConfigured && (
-        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-start">
-              <svg className="w-5 h-5 text-yellow-500 mr-3 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <div className="flex-1">
-                <p className="text-yellow-800 font-medium">Configuration Required</p>
-                <p className="text-yellow-700 text-sm mt-1">
-                  {!healthStatus.config.database.configured && (
-                    <span className="block">Database: {healthStatus.config.database.error}</span>
-                  )}
-                  {!healthStatus.config.microsoft.configured && (
-                    <span className="block">Microsoft Auth: {healthStatus.config.microsoft.error}</span>
-                  )}
-                </p>
-                <p className="text-yellow-600 text-sm mt-2">
-                  Please set the required environment variables. See SETUP_GUIDE.md for instructions.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Navigation */}
       <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -132,12 +69,6 @@ function HomeContent() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <button
-                onClick={handleDashboard}
-                className="text-gray-700 hover:text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-50 transition-all"
-              >
-                Dashboard
-              </button>
               <button
                 onClick={handleSignIn}
                 disabled={isLoading}
@@ -160,14 +91,14 @@ function HomeContent() {
             </span>
           </h2>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
-            AI-powered bid tracking with seamless Microsoft integration.
+            AI-powered bid tracking with seamless Google integration.
             Manage bids, collaborate with subcontractors, and never miss a deadline.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
               onClick={handleSignIn}
               disabled={isLoading}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:shadow-2xl transform hover:scale-105 transition-all disabled:opacity-50"
+              className="bg-white text-gray-700 px-8 py-4 rounded-xl font-semibold text-lg border-2 border-gray-300 hover:shadow-2xl transform hover:scale-105 transition-all disabled:opacity-50 inline-flex items-center justify-center"
             >
               {isLoading ? (
                 <span className="flex items-center justify-center">
@@ -179,19 +110,16 @@ function HomeContent() {
                 </span>
               ) : (
                 <>
-                  <svg className="inline-block w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M11.5 2v8.5H3c0 4.7 3.8 8.5 8.5 8.5s8.5-3.8 8.5-8.5S16.2 2 11.5 2z" />
-                    <path d="M13.5 0v8.5H22c-.3-4.4-3.9-8-8.5-8.5z" />
+                  <svg className="w-5 h-5 mr-3" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                    <path fill="none" d="M0 0h48v48H0z"/>
                   </svg>
-                  Sign in with Microsoft
+                  Sign in with Google
                 </>
               )}
-            </button>
-            <button
-              onClick={handleDashboard}
-              className="bg-white text-blue-600 px-8 py-4 rounded-xl font-semibold text-lg border-2 border-blue-600 hover:bg-blue-50 transform hover:scale-105 transition-all"
-            >
-              View Dashboard
             </button>
           </div>
         </div>
@@ -244,9 +172,9 @@ function HomeContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-3">Outlook Integration</h3>
+            <h3 className="text-2xl font-bold text-gray-900 mb-3">Gmail Integration</h3>
             <p className="text-gray-600 leading-relaxed">
-              Send notifications directly through Outlook. Track all communications in one place.
+              Send notifications directly through Gmail. Track all communications in one place.
             </p>
           </div>
 
@@ -259,7 +187,7 @@ function HomeContent() {
             </div>
             <h3 className="text-2xl font-bold text-gray-900 mb-3">Calendar Sync</h3>
             <p className="text-gray-600 leading-relaxed">
-              Never miss a deadline. Automatic calendar events sync with your Microsoft Calendar.
+              Never miss a deadline. Automatic calendar events sync with your Google Calendar.
             </p>
           </div>
 
@@ -334,7 +262,7 @@ function HomeContent() {
                 <li>Document Management</li>
                 <li>AI Division Selection</li>
                 <li>Subcontractor Tracking</li>
-                <li>Microsoft Integration</li>
+                <li>Google Integration</li>
               </ul>
             </div>
             <div>
