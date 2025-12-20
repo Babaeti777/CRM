@@ -6,7 +6,26 @@ import { prisma } from '@/lib/prisma'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const getMsalConfig = (redirectUri: string) => ({
+/**
+ * Validate Microsoft configuration
+ */
+function validateMicrosoftConfig(): { valid: boolean; error?: string } {
+  if (!process.env.MICROSOFT_CLIENT_ID) {
+    return { valid: false, error: 'MICROSOFT_CLIENT_ID is not configured' }
+  }
+  if (!process.env.MICROSOFT_TENANT_ID) {
+    return { valid: false, error: 'MICROSOFT_TENANT_ID is not configured' }
+  }
+  if (!process.env.MICROSOFT_CLIENT_SECRET) {
+    return { valid: false, error: 'MICROSOFT_CLIENT_SECRET is not configured' }
+  }
+  if (!process.env.DATABASE_URL) {
+    return { valid: false, error: 'DATABASE_URL is not configured' }
+  }
+  return { valid: true }
+}
+
+const getMsalConfig = () => ({
   auth: {
     clientId: process.env.MICROSOFT_CLIENT_ID!,
     authority: `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}`,
@@ -15,22 +34,37 @@ const getMsalConfig = (redirectUri: string) => ({
 })
 
 export async function GET(request: NextRequest) {
+  // Get the base URL first for redirects
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
+                  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` :
+                  `https://${request.headers.get('host')}`)
+
   try {
+    // Validate configuration first
+    const configCheck = validateMicrosoftConfig()
+    if (!configCheck.valid) {
+      console.error('Configuration error:', configCheck.error)
+      return NextResponse.redirect(`${baseUrl}?error=config_error&message=${encodeURIComponent(configCheck.error || 'Configuration error')}`)
+    }
+
     const searchParams = request.nextUrl.searchParams
     const code = searchParams.get('code')
+    const error = searchParams.get('error')
+    const errorDescription = searchParams.get('error_description')
 
-    // Get the base URL
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
-                    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` :
-                    `https://${request.headers.get('host')}`)
+    // Handle OAuth errors from Microsoft
+    if (error) {
+      console.error('OAuth error from Microsoft:', error, errorDescription)
+      return NextResponse.redirect(`${baseUrl}?error=${error}&message=${encodeURIComponent(errorDescription || error)}`)
+    }
 
     if (!code) {
-      return NextResponse.redirect(`${baseUrl}?error=no_code`)
+      return NextResponse.redirect(`${baseUrl}?error=no_code&message=${encodeURIComponent('No authorization code received')}`)
     }
 
     const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${baseUrl}/api/auth/callback`
 
-    const msalClient = new ConfidentialClientApplication(getMsalConfig(redirectUri))
+    const msalClient = new ConfidentialClientApplication(getMsalConfig())
 
     const tokenResponse = await msalClient.acquireTokenByCode({
       code,

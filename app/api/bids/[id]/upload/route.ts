@@ -4,12 +4,72 @@ import { suggestDivision } from '@/lib/openai'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
+import { getCurrentUser } from '@/lib/auth'
+
+// File upload configuration
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+]
+const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt', '.png', '.jpg', '.jpeg']
+
+/**
+ * Sanitize filename to prevent path traversal attacks
+ */
+function sanitizeFilename(filename: string): string {
+  // Remove path separators and null bytes
+  return filename
+    .replace(/[/\\]/g, '')
+    .replace(/\0/g, '')
+    .replace(/\.\./g, '')
+    .trim()
+}
+
+/**
+ * Validate file type by extension and MIME type
+ */
+function isValidFileType(filename: string, mimeType: string): boolean {
+  const ext = path.extname(filename).toLowerCase()
+  const isValidExtension = ALLOWED_EXTENSIONS.includes(ext)
+  const isValidMimeType = ALLOWED_MIME_TYPES.includes(mimeType)
+
+  return isValidExtension && isValidMimeType
+}
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Check authentication
+    const user = await getCurrentUser()
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const { id: bidId } = await params
+
+    // Verify bid exists
+    const existingBid = await prisma.bid.findUnique({
+      where: { id: bidId },
+    })
+
+    if (!existingBid) {
+      return NextResponse.json(
+        { error: 'Bid not found' },
+        { status: 404 }
+      )
+    }
+
     const formData = await request.formData()
     const file = formData.get('file') as File
 
@@ -17,24 +77,49 @@ export async function POST(
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB` },
+        { status: 400 }
+      )
+    }
+
+    // Validate file type
+    if (!isValidFileType(file.name, file.type)) {
+      return NextResponse.json(
+        { error: `Invalid file type. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    // Sanitize filename
+    const sanitizedName = sanitizeFilename(file.name)
+    if (!sanitizedName) {
+      return NextResponse.json(
+        { error: 'Invalid filename' },
+        { status: 400 }
+      )
+    }
+
     // Create uploads directory if it doesn't exist
-    const uploadsDir = path.join(process.cwd(), 'uploads', params.id)
+    const uploadsDir = path.join(process.cwd(), 'uploads', bidId)
     if (!existsSync(uploadsDir)) {
       await mkdir(uploadsDir, { recursive: true })
     }
 
-    // Save file
+    // Save file with timestamped sanitized name
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
-    const fileName = `${Date.now()}-${file.name}`
+    const fileName = `${Date.now()}-${sanitizedName}`
     const filePath = path.join(uploadsDir, fileName)
     await writeFile(filePath, buffer)
 
     // Create document record
     const document = await prisma.document.create({
       data: {
-        bidId: params.id,
-        fileName: file.name,
+        bidId,
+        fileName: sanitizedName,
         filePath: filePath,
         fileSize: file.size,
         mimeType: file.type,
@@ -52,25 +137,25 @@ export async function POST(
 
     // Get AI suggestion if this is the first document
     const bid = await prisma.bid.findUnique({
-      where: { id: params.id },
+      where: { id: bidId },
       include: { documents: true },
     })
 
     if (bid && bid.documents.length === 1 && !bid.divisionConfirmed) {
       const divisions = await prisma.division.findMany()
-      const divisionNames = divisions.map((d) => d.name)
+      const divisionNames = divisions.map((d: { name: string }) => d.name)
 
       if (divisionNames.length > 0) {
         const suggestion = await suggestDivision(documentText, divisionNames)
 
         // Find the suggested division
         const suggestedDivision = divisions.find(
-          (d) => d.name === suggestion.division
+          (d: { id: string; name: string }) => d.name === suggestion.division
         )
 
         if (suggestedDivision) {
           await prisma.bid.update({
-            where: { id: params.id },
+            where: { id: bidId },
             data: {
               aiSuggestedDivision: JSON.stringify(suggestion),
               status: 'PENDING_DIVISION',

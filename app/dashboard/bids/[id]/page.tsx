@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, use } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface Bid {
@@ -15,7 +15,12 @@ interface Bid {
     id: string
     name: string
   }
-  documents: any[]
+  documents: Array<{
+    id: string
+    fileName: string
+    fileSize: number
+    uploadedAt: string
+  }>
   responses: Array<{
     id: string
     status: string
@@ -31,16 +36,59 @@ interface Bid {
   }>
 }
 
-export default function BidDetail({ params }: { params: { id: string } }) {
+interface UserInfo {
+  id: string
+  email: string
+  name: string | null
+  hasValidToken: boolean
+  accessToken: string | null
+}
+
+interface AISuggestion {
+  division: string
+  confidence: number
+  reasoning: string
+}
+
+export default function BidDetail({ params }: { params: Promise<{ id: string }> }) {
+  const { id: bidId } = use(params)
   const router = useRouter()
   const [bid, setBid] = useState<Bid | null>(null)
+  const [user, setUser] = useState<UserInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [notifying, setNotifying] = useState(false)
-  const [aiSuggestion, setAiSuggestion] = useState<any>(null)
+  const [aiSuggestion, setAiSuggestion] = useState<AISuggestion | null>(null)
+
+  const fetchBid = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/bids/${bidId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setBid(data)
+      }
+    } catch (error) {
+      console.error('Error fetching bid:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [bidId])
+
+  const fetchUser = useCallback(async () => {
+    try {
+      const response = await fetch('/api/auth/me')
+      if (response.ok) {
+        const data = await response.json()
+        setUser(data)
+      }
+    } catch (error) {
+      console.error('Error fetching user:', error)
+    }
+  }, [])
 
   useEffect(() => {
     fetchBid()
-  }, [params.id])
+    fetchUser()
+  }, [fetchBid, fetchUser])
 
   useEffect(() => {
     if (bid?.aiSuggestedDivision) {
@@ -52,21 +100,9 @@ export default function BidDetail({ params }: { params: { id: string } }) {
     }
   }, [bid])
 
-  const fetchBid = async () => {
-    try {
-      const response = await fetch(`/api/bids/${params.id}`)
-      const data = await response.json()
-      setBid(data)
-    } catch (error) {
-      console.error('Error fetching bid:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const confirmDivision = async () => {
     try {
-      await fetch(`/api/bids/${params.id}`, {
+      await fetch(`/api/bids/${bidId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -83,18 +119,19 @@ export default function BidDetail({ params }: { params: { id: string } }) {
   }
 
   const notifySubcontractors = async () => {
+    if (!user) {
+      alert('Please sign in to send notifications')
+      return
+    }
+
     setNotifying(true)
     try {
-      // TODO: This feature is incomplete - need to get real access token from authenticated user
-      // Currently passes empty accessToken, so emails/calendar events won't be sent
-      // To fix: Implement proper authentication and store access token in user session
-      const response = await fetch(`/api/bids/${params.id}/notify-subcontractors`, {
+      const response = await fetch(`/api/bids/${bidId}/notify-subcontractors`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          accessToken: '', // FIXME: Get from authenticated user session
           message: `Please review the bid opportunity: ${bid?.title}`,
           createEvent: true,
         }),
@@ -104,7 +141,12 @@ export default function BidDetail({ params }: { params: { id: string } }) {
         alert('Subcontractors notified successfully!')
         fetchBid()
       } else {
-        alert('Failed to notify subcontractors')
+        const errorData = await response.json()
+        if (errorData.error?.includes('access token')) {
+          alert('Your Microsoft session has expired. Please sign in again.')
+        } else {
+          alert(errorData.error || 'Failed to notify subcontractors')
+        }
       }
     } catch (error) {
       console.error('Error notifying subcontractors:', error)
