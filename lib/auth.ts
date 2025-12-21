@@ -33,9 +33,28 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        msAccessToken: true,
+        msRefreshToken: true,
+        msTokenExpiry: true,
+      },
     })
 
-    return user
+    if (!user) {
+      return null
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      msAccessToken: user.msAccessToken,
+      msRefreshToken: user.msRefreshToken,
+      msTokenExpiry: user.msTokenExpiry,
+    }
   } catch (error) {
     console.error('Error getting current user:', error)
     return null
