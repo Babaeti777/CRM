@@ -11,7 +11,7 @@ const handler = NextAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.send',
+          scope: 'openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/drive.file',
           access_type: 'offline',
           prompt: 'consent',
         },
@@ -19,9 +19,20 @@ const handler = NextAuth({
     }),
   ],
   callbacks: {
-    async session({ session, user }) {
+    async jwt({ token, account }) {
+      // Store access token in JWT when user signs in
+      if (account) {
+        token.accessToken = account.access_token
+      }
+      return token
+    },
+    async session({ session, token, user }) {
       if (session.user) {
         session.user.id = user.id
+      }
+      // Pass access token to session
+      if (token.accessToken) {
+        session.accessToken = token.accessToken as string
       }
       return session
     },

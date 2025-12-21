@@ -12,10 +12,11 @@
 ### Step 2: Enable APIs
 
 1. In your project, go to **"APIs & Services"** → **"Library"**
-2. Search and enable these 3 APIs:
+2. Search and enable these 4 APIs:
    - ✅ **Google Calendar API** (click "Enable")
    - ✅ **Gmail API** (click "Enable")
    - ✅ **Google+ API** (click "Enable")
+   - ✅ **Google Drive API** (click "Enable") - **IMPORTANT for file storage**
 
 ### Step 3: Configure OAuth Consent Screen
 
@@ -33,6 +34,7 @@
      - `.../auth/userinfo.profile`
      - `.../auth/calendar`
      - `.../auth/gmail.send`
+     - `.../auth/drive.file` - **IMPORTANT for file uploads**
    - Click **"Update"** → **"Save and Continue"**
 7. **Test users:** Click **"Add Users"**
    - Add your Gmail address
@@ -91,7 +93,9 @@ Or use: https://generate-secret.vercel.app/32
 - [ ] Enabled Google Calendar API
 - [ ] Enabled Gmail API
 - [ ] Enabled Google+ API
+- [ ] Enabled Google Drive API (for file storage)
 - [ ] Configured OAuth consent screen
+- [ ] Added drive.file scope
 - [ ] Added test users
 - [ ] Created OAuth credentials
 - [ ] Added redirect URI

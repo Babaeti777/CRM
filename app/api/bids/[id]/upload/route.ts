@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { suggestDivision } from '@/lib/openai'
-import { uploadFileToFirebase } from '@/lib/firebase'
+import { uploadToGoogleDrive } from '@/lib/google-drive'
 import { getServerSession } from 'next-auth'
 import path from 'path'
 
@@ -48,12 +48,14 @@ export async function POST(
   try {
     // Check authentication
     const session = await getServerSession()
-    if (!session) {
+    if (!session || !session.accessToken) {
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { error: 'Authentication required. Please sign out and sign in again.' },
         { status: 401 }
       )
     }
+
+    const accessToken = session.accessToken as string
 
     const { id: bidId } = await params
 
@@ -101,17 +103,22 @@ export async function POST(
       )
     }
 
-    // Upload to Firebase Storage
+    // Upload to Google Drive
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
-    const fileUrl = await uploadFileToFirebase(buffer, sanitizedName, `bids/${bidId}`)
+    const driveFile = await uploadToGoogleDrive(
+      accessToken,
+      buffer,
+      sanitizedName,
+      file.type
+    )
 
     // Create document record
     const document = await prisma.document.create({
       data: {
         bidId,
         fileName: sanitizedName,
-        filePath: fileUrl, // Store Firebase URL
+        filePath: driveFile.webViewLink, // Store Google Drive URL
         fileSize: file.size,
         mimeType: file.type,
       },
