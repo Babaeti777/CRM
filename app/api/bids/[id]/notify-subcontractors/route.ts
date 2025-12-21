@@ -19,6 +19,10 @@ export async function POST(
 
     const accessToken = session.accessToken as string
 
+    const { id: bidId } = await params
+    const body = await request.json()
+    const { message, createEvent } = body
+
     // Get bid with division and subcontractors
     const bid = await prisma.bid.findUnique({
       where: { id: bidId },
