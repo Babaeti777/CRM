@@ -9,11 +9,18 @@ interface Division {
   description: string
 }
 
+interface ErrorDetails {
+  error: string
+  details?: string
+  suggestion?: string
+  message?: string
+}
+
 export default function NewBid() {
   const router = useRouter()
   const [divisions, setDivisions] = useState<Division[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string>('')
+  const [error, setError] = useState<ErrorDetails | null>(null)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -32,8 +39,18 @@ export default function NewBid() {
       const response = await fetch('/api/divisions')
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || 'Failed to fetch divisions')
+        const errorData = await response.json().catch(() => ({
+          error: 'Failed to fetch divisions',
+          message: 'Unknown error occurred'
+        }))
+        setError({
+          error: errorData.error || 'Failed to fetch divisions',
+          details: errorData.details,
+          suggestion: errorData.suggestion,
+          message: errorData.message
+        })
+        setDivisions([])
+        return
       }
 
       const data = await response.json()
@@ -45,14 +62,23 @@ export default function NewBid() {
           setFormData((prev) => ({ ...prev, divisionId: data[0].id }))
         }
       } else if (data.error) {
-        setError(data.message || data.error)
+        setError({
+          error: data.error,
+          details: data.details,
+          suggestion: data.suggestion,
+          message: data.message
+        })
         setDivisions([])
       } else {
         setDivisions([])
       }
     } catch (error) {
       console.error('Error fetching divisions:', error)
-      setError(error instanceof Error ? error.message : 'Failed to load divisions')
+      setError({
+        error: 'Network error',
+        details: error instanceof Error ? error.message : 'Failed to connect to server',
+        suggestion: 'Check your internet connection and try again'
+      })
       setDivisions([])
     } finally {
       setLoading(false)
@@ -118,28 +144,52 @@ export default function NewBid() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center">
-        <div className="max-w-md bg-white rounded-2xl shadow-xl p-8 border border-red-200">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center p-4">
+        <div className="max-w-lg bg-white rounded-2xl shadow-xl p-8 border border-red-200">
           <div className="text-center">
             <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Database Not Connected</h2>
-            <p className="text-gray-600 mb-4">{error}</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">{error.error || 'Database Error'}</h2>
+
+            {error.details && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-left text-sm mb-4">
+                <p className="font-semibold text-red-900 mb-1">Error Details:</p>
+                <code className="text-red-700 break-all text-xs">{error.details}</code>
+              </div>
+            )}
+
+            {error.suggestion && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-left text-sm mb-4">
+                <p className="font-semibold text-blue-900 mb-1">How to Fix:</p>
+                <p className="text-blue-700">{error.suggestion}</p>
+              </div>
+            )}
+
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left text-sm mb-4">
-              <p className="font-semibold text-yellow-900 mb-2">Quick Fix:</p>
+              <p className="font-semibold text-yellow-900 mb-2">Common Solutions:</p>
               <ol className="list-decimal list-inside space-y-1 text-yellow-800">
-                <li>Go to Vercel Dashboard → Settings → Environment Variables</li>
-                <li>Add: <code className="bg-yellow-100 px-1 rounded">DATABASE_URL</code></li>
-                <li>Redeploy the app</li>
+                <li>Verify DATABASE_URL is set in Vercel Environment Variables</li>
+                <li>Ensure the database server is running and accessible</li>
+                <li>Run <code className="bg-yellow-100 px-1 rounded">npx prisma db push</code> to sync the schema</li>
+                <li>Redeploy the app after making changes</li>
               </ol>
             </div>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-all"
-            >
-              Back to Dashboard
-            </button>
+
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => fetchDivisions()}
+                className="bg-green-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-green-700 transition-all"
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-all"
+              >
+                Back to Dashboard
+              </button>
+            </div>
           </div>
         </div>
       </div>

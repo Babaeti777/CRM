@@ -33,10 +33,32 @@ export async function GET() {
     return NextResponse.json(divisions)
   } catch (error) {
     console.error('Error fetching divisions:', error)
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    // Provide specific error messages based on the error type
+    let userMessage = 'Database connection failed'
+    let suggestion = 'Check your DATABASE_URL and ensure the database is accessible'
+
+    if (errorMessage.includes('does not exist') || errorMessage.includes('relation')) {
+      userMessage = 'Database tables not found'
+      suggestion = 'Run "npx prisma db push" or "npx prisma migrate deploy" to create the database tables'
+    } else if (errorMessage.includes('connect') || errorMessage.includes('ECONNREFUSED')) {
+      userMessage = 'Cannot connect to database'
+      suggestion = 'Check that your database server is running and DATABASE_URL is correct'
+    } else if (errorMessage.includes('authentication') || errorMessage.includes('password')) {
+      userMessage = 'Database authentication failed'
+      suggestion = 'Check your database username and password in DATABASE_URL'
+    } else if (errorMessage.includes('timeout')) {
+      userMessage = 'Database connection timed out'
+      suggestion = 'Check network connectivity to your database server'
+    }
+
     return NextResponse.json({
-      error: 'Failed to fetch divisions',
-      details: error instanceof Error ? error.message : 'Unknown error',
-      message: 'Make sure DATABASE_URL is set correctly and database is initialized'
+      error: userMessage,
+      details: errorMessage,
+      suggestion: suggestion,
+      message: `${userMessage}. ${suggestion}`
     }, { status: 500 })
   }
 }

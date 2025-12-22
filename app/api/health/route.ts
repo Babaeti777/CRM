@@ -16,7 +16,8 @@ function maskValue(value: string | undefined): string | undefined {
 
 function checkConfig(request: NextRequest): {
   database: ConfigStatus
-  microsoft: ConfigStatus & { redirectUri?: string }
+  google: ConfigStatus
+  nextauth: ConfigStatus
   openai: ConfigStatus
   overall: boolean
   environment: {
@@ -32,42 +33,40 @@ function checkConfig(request: NextRequest): {
     value: maskValue(process.env.DATABASE_URL),
   }
 
-  const microsoftConfigured =
-    !!process.env.MICROSOFT_CLIENT_ID &&
-    !!process.env.MICROSOFT_TENANT_ID &&
-    !!process.env.MICROSOFT_CLIENT_SECRET
+  const googleConfigured =
+    !!process.env.GOOGLE_CLIENT_ID &&
+    !!process.env.GOOGLE_CLIENT_SECRET
 
-  // Calculate what redirect URI will be used
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
-                  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` :
-                  `https://${request.headers.get('host')}`)
-  const computedRedirectUri = process.env.MICROSOFT_REDIRECT_URI || `${baseUrl}/api/auth/callback`
-
-  const microsoft: ConfigStatus & { redirectUri?: string } = {
-    configured: microsoftConfigured,
-    error: !microsoftConfigured
+  const google: ConfigStatus = {
+    configured: googleConfigured,
+    error: !googleConfigured
       ? 'Missing: ' +
         [
-          !process.env.MICROSOFT_CLIENT_ID && 'MICROSOFT_CLIENT_ID',
-          !process.env.MICROSOFT_TENANT_ID && 'MICROSOFT_TENANT_ID',
-          !process.env.MICROSOFT_CLIENT_SECRET && 'MICROSOFT_CLIENT_SECRET',
+          !process.env.GOOGLE_CLIENT_ID && 'GOOGLE_CLIENT_ID',
+          !process.env.GOOGLE_CLIENT_SECRET && 'GOOGLE_CLIENT_SECRET',
         ]
           .filter(Boolean)
           .join(', ')
       : undefined,
-    redirectUri: computedRedirectUri,
+  }
+
+  const nextauthConfigured = !!process.env.NEXTAUTH_SECRET
+  const nextauth: ConfigStatus = {
+    configured: nextauthConfigured,
+    error: !nextauthConfigured ? 'NEXTAUTH_SECRET not set' : undefined,
   }
 
   const openai: ConfigStatus = {
     configured: !!process.env.OPENAI_API_KEY,
-    error: !process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY not set' : undefined,
+    error: !process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY not set (optional)' : undefined,
   }
 
   return {
     database,
-    microsoft,
+    google,
+    nextauth,
     openai,
-    overall: database.configured && microsoft.configured,
+    overall: database.configured && googleConfigured && nextauthConfigured,
     environment: {
       nodeEnv: process.env.NODE_ENV || 'unknown',
       vercelUrl: process.env.VERCEL_URL,
@@ -86,7 +85,8 @@ export async function GET(request: NextRequest) {
     environment: status.environment,
     config: {
       database: status.database,
-      microsoft: status.microsoft,
+      google: status.google,
+      nextauth: status.nextauth,
       openai: status.openai,
     },
     instructions: !status.overall
@@ -98,19 +98,23 @@ export async function GET(request: NextRequest) {
             '3. Redeploy your application after adding variables',
           ],
           required: [
-            'DATABASE_URL - PostgreSQL connection string',
-            'MICROSOFT_CLIENT_ID - Azure AD App Client ID',
-            'MICROSOFT_TENANT_ID - Azure AD Tenant ID',
-            'MICROSOFT_CLIENT_SECRET - Azure AD App Secret',
-            'MICROSOFT_REDIRECT_URI - Must match Azure AD exactly (e.g., https://crm-blond-six.vercel.app/api/auth/callback)',
-            'NEXT_PUBLIC_APP_URL - Your app URL (e.g., https://crm-blond-six.vercel.app)',
+            'DATABASE_URL - PostgreSQL connection string (e.g., postgresql://user:pass@host:5432/db)',
+            'GOOGLE_CLIENT_ID - Google OAuth Client ID from Google Cloud Console',
+            'GOOGLE_CLIENT_SECRET - Google OAuth Client Secret',
+            'NEXTAUTH_SECRET - Random string for JWT encryption (run: openssl rand -base64 32)',
+            'NEXTAUTH_URL - Your app URL (e.g., https://your-app.vercel.app)',
           ],
           optional: ['OPENAI_API_KEY - For AI-powered division suggestions'],
-          azureSteps: [
-            '1. Go to Azure Portal > Azure Active Directory > App registrations',
-            '2. Select your app > Authentication',
-            '3. Under Redirect URIs, add: https://crm-blond-six.vercel.app/api/auth/callback',
-            '4. Ensure URI matches EXACTLY (no trailing slash)',
+          googleCloudSteps: [
+            '1. Go to Google Cloud Console > APIs & Services > Credentials',
+            '2. Create OAuth 2.0 Client ID (Web application type)',
+            '3. Add Authorized redirect URI: https://your-app.vercel.app/api/auth/callback/google',
+            '4. Copy Client ID and Client Secret to Vercel environment variables',
+          ],
+          databaseSteps: [
+            '1. Create a PostgreSQL database (e.g., on Neon, Supabase, or Railway)',
+            '2. Copy the connection string to DATABASE_URL',
+            '3. Run "npx prisma db push" locally or set up a deploy hook',
           ],
         }
       : undefined,
