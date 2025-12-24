@@ -167,28 +167,41 @@ export default function NewBid() {
             )}
 
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left text-sm mb-4">
-              <p className="font-semibold text-yellow-900 mb-2">Common Solutions:</p>
-              <ol className="list-decimal list-inside space-y-1 text-yellow-800">
-                <li>Verify DATABASE_URL is set in Vercel Environment Variables</li>
-                <li>Ensure the database server is running and accessible</li>
-                <li>Run <code className="bg-yellow-100 px-1 rounded">npx prisma db push</code> to sync the schema</li>
-                <li>Redeploy the app after making changes</li>
+              <p className="font-semibold text-yellow-900 mb-2">Step-by-Step Fix:</p>
+              <ol className="list-decimal list-inside space-y-2 text-yellow-800">
+                <li>Go to <strong>Vercel Dashboard</strong> → Your Project → <strong>Settings</strong></li>
+                <li>Click <strong>Environment Variables</strong></li>
+                <li>Find or add <code className="bg-yellow-100 px-1 rounded">DATABASE_URL</code></li>
+                <li>Make sure it&apos;s enabled for <strong>Production</strong>, <strong>Preview</strong>, AND <strong>Development</strong></li>
+                <li>Go to <strong>Deployments</strong> tab</li>
+                <li>Click <strong>...</strong> → <strong>Redeploy</strong></li>
+                <li><strong>IMPORTANT:</strong> Uncheck &quot;Use existing Build Cache&quot;</li>
               </ol>
             </div>
 
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => fetchDivisions()}
-                className="bg-green-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-green-700 transition-all"
-              >
-                Retry
-              </button>
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-all"
-              >
-                Back to Dashboard
-              </button>
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => window.open('/api/debug', '_blank')}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-purple-700 transition-all text-sm"
+                >
+                  Check Server Config
+                </button>
+              </div>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => fetchDivisions()}
+                  className="bg-green-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-green-700 transition-all"
+                >
+                  Retry
+                </button>
+                <button
+                  onClick={() => router.push('/dashboard')}
+                  className="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-all"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -12,7 +12,14 @@ export async function GET() {
       console.error('DATABASE_URL not configured')
       return NextResponse.json({
         error: 'Database not configured',
-        message: 'Please set DATABASE_URL in environment variables'
+        message: 'DATABASE_URL environment variable is not set on the server',
+        details: 'The server cannot find DATABASE_URL. This usually means the environment variable was not saved correctly in Vercel, or the app needs to be redeployed.',
+        suggestion: 'Go to Vercel → Settings → Environment Variables → Make sure DATABASE_URL is set for Production → Redeploy (without cache)',
+        debug: {
+          nodeEnv: process.env.NODE_ENV,
+          vercel: process.env.VERCEL,
+          vercelEnv: process.env.VERCEL_ENV,
+        }
       }, { status: 500 })
     }
 
