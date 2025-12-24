@@ -17,10 +17,16 @@ interface Subcontractor {
   }>
 }
 
+interface ErrorDetails {
+  error: string
+  details?: string
+  suggestion?: string
+}
+
 export default function Subcontractors() {
   const [subcontractors, setSubcontractors] = useState<Subcontractor[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<ErrorDetails | null>(null)
 
   useEffect(() => {
     fetchSubcontractors()
@@ -33,7 +39,11 @@ export default function Subcontractors() {
 
       // Check if response is an error or invalid data
       if (!response.ok || !Array.isArray(data)) {
-        setError(data.error || data.message || 'Failed to load subcontractors')
+        setError({
+          error: data.error || 'Failed to load subcontractors',
+          details: data.details,
+          suggestion: data.suggestion
+        })
         setSubcontractors([])
         return
       }
@@ -42,7 +52,11 @@ export default function Subcontractors() {
       setError(null)
     } catch (error) {
       console.error('Error fetching subcontractors:', error)
-      setError('Failed to connect to server')
+      setError({
+        error: 'Network error',
+        details: error instanceof Error ? error.message : 'Failed to connect to server',
+        suggestion: 'Check your internet connection and try again'
+      })
       setSubcontractors([])
     } finally {
       setLoading(false)
@@ -71,12 +85,29 @@ export default function Subcontractors() {
         {loading ? (
           <div className="text-center py-12">Loading...</div>
         ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-2xl mx-auto">
-            <h2 className="text-xl font-bold text-red-900 mb-2">Database Error</h2>
-            <p className="text-red-700 mb-4">{error}</p>
-            <p className="text-sm text-red-600">
-              Make sure DATABASE_URL is set in your Vercel environment variables.
-            </p>
+          <div className="bg-white border border-red-200 rounded-lg p-6 max-w-2xl mx-auto shadow-lg">
+            <h2 className="text-xl font-bold text-red-900 mb-4">{error.error}</h2>
+
+            {error.details && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-left text-sm mb-4">
+                <p className="font-semibold text-red-900 mb-1">Error Details:</p>
+                <code className="text-red-700 break-all text-xs">{error.details}</code>
+              </div>
+            )}
+
+            {error.suggestion && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-left text-sm mb-4">
+                <p className="font-semibold text-blue-900 mb-1">How to Fix:</p>
+                <p className="text-blue-700">{error.suggestion}</p>
+              </div>
+            )}
+
+            <button
+              onClick={() => { setLoading(true); fetchSubcontractors(); }}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition-all"
+            >
+              Retry
+            </button>
           </div>
         ) : subcontractors.length === 0 ? (
           <div className="text-center py-12 text-gray-500">No subcontractors found</div>
