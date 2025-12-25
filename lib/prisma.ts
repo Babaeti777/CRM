@@ -1,17 +1,18 @@
 import { PrismaClient } from '@prisma/client'
 
-// Define types that may not be available if Prisma client isn't generated
-type PrismaLogLevel = 'query' | 'info' | 'warn' | 'error'
-interface PrismaLogDefinition {
-  level: PrismaLogLevel
-  emit: 'stdout' | 'event'
-}
+// Define types for Prisma log events
 interface LogEvent {
   timestamp: Date
   message: string
   target: string
-  level?: PrismaLogLevel
-  duration?: number
+}
+
+interface QueryEvent {
+  timestamp: Date
+  query: string
+  params: string
+  duration: number
+  target: string
 }
 
 const globalForPrisma = globalThis as unknown as {
@@ -28,17 +29,19 @@ const POOL_CONFIG = {
 }
 
 /**
- * Custom logger for database operations
+ * Custom logger for database error/warn events
  */
 function logDatabaseEvent(event: LogEvent) {
   const timestamp = new Date().toISOString()
-  if (event.level === 'error') {
-    console.error(`[DB ERROR ${timestamp}]`, event.message)
-  } else if (event.level === 'warn') {
-    console.warn(`[DB WARN ${timestamp}]`, event.message)
-  } else if (event.level === 'query' && process.env.DATABASE_QUERY_LOGGING === 'true') {
-    console.log(`[DB QUERY ${timestamp}] Duration: ${event.duration}ms`)
-  }
+  console.error(`[DB ${timestamp}]`, event.message)
+}
+
+/**
+ * Custom logger for database query events
+ */
+function logQueryEvent(event: QueryEvent) {
+  const timestamp = new Date().toISOString()
+  console.log(`[DB QUERY ${timestamp}] Duration: ${event.duration}ms`)
 }
 
 function createPrismaClient(): PrismaClient {
@@ -82,7 +85,7 @@ function createPrismaClient(): PrismaClient {
   client.$on('error', logDatabaseEvent)
   client.$on('warn', logDatabaseEvent)
   if (process.env.DATABASE_QUERY_LOGGING === 'true') {
-    client.$on('query', logDatabaseEvent)
+    client.$on('query', logQueryEvent)
   }
 
   return client
