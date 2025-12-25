@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withDatabaseRetry } from '@/lib/prisma'
 import { suggestDivision } from '@/lib/openai'
 import { uploadToGoogleDrive } from '@/lib/google-drive'
 import { getServerSession } from 'next-auth'
@@ -103,6 +103,9 @@ export async function POST(
       )
     }
 
+    const requestId = `upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    console.log(`[UPLOAD ${requestId}] Starting file upload: ${sanitizedName}`)
+
     // Upload to Google Drive
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
@@ -113,16 +116,7 @@ export async function POST(
       file.type
     )
 
-    // Create document record
-    const document = await prisma.document.create({
-      data: {
-        bidId,
-        fileName: sanitizedName,
-        filePath: driveFile.webViewLink, // Store Google Drive URL
-        fileSize: file.size,
-        mimeType: file.type,
-      },
-    })
+    console.log(`[UPLOAD ${requestId}] File uploaded to Google Drive`)
 
     // Extract text content for AI analysis (simplified - in production use proper document parsing)
     let documentText = ''
@@ -133,44 +127,111 @@ export async function POST(
       documentText = 'PDF content parsing would go here'
     }
 
-    // Get AI suggestion if this is the first document
-    const bid = await prisma.bid.findUnique({
-      where: { id: bidId },
-      include: { documents: true },
-    })
-
-    if (bid && bid.documents.length === 1 && !bid.divisionConfirmed) {
-      const divisions = await prisma.division.findMany()
-      const divisionNames = divisions.map((d: { name: string }) => d.name)
-
-      if (divisionNames.length > 0) {
-        const suggestion = await suggestDivision(documentText, divisionNames)
-
-        // Find the suggested division
-        const suggestedDivision = divisions.find(
-          (d: { id: string; name: string }) => d.name === suggestion.division
-        )
-
-        if (suggestedDivision) {
-          await prisma.bid.update({
-            where: { id: bidId },
-            data: {
-              aiSuggestedDivision: JSON.stringify(suggestion),
-              status: 'PENDING_DIVISION',
-            },
-          })
-        }
+    // Use a transaction to atomically create document and check/update AI suggestion
+    // This prevents race conditions when multiple files are uploaded concurrently
+    interface TransactionResult {
+      document: {
+        id: string
+        bidId: string
+        fileName: string
+        filePath: string
+        fileSize: number
+        mimeType: string
+        uploadedAt: Date
       }
+      aiSuggestionApplied: boolean
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: TransactionResult = await withDatabaseRetry(() =>
+      prisma.$transaction(async (tx: any) => {
+        // Create document record within transaction
+        const document = await tx.document.create({
+          data: {
+            bidId,
+            fileName: sanitizedName,
+            filePath: driveFile.webViewLink, // Store Google Drive URL
+            fileSize: file.size,
+            mimeType: file.type,
+          },
+        })
+
+        console.log(`[UPLOAD ${requestId}] Document record created: ${document.id}`)
+
+        // Get current bid state within transaction to check document count atomically
+        const bid = await tx.bid.findUnique({
+          where: { id: bidId },
+          include: {
+            documents: {
+              select: { id: true },
+            },
+          },
+        })
+
+        let aiSuggestionApplied = false
+
+        // Only trigger AI suggestion if this is the first document AND division not yet confirmed
+        // The transaction ensures no race condition here
+        if (bid && bid.documents.length === 1 && !bid.divisionConfirmed && !bid.aiSuggestedDivision) {
+          const divisions = await tx.division.findMany()
+          const divisionNames = divisions.map((d: { name: string }) => d.name)
+
+          if (divisionNames.length > 0) {
+            console.log(`[UPLOAD ${requestId}] Triggering AI division suggestion`)
+
+            try {
+              const suggestion = await suggestDivision(documentText, divisionNames)
+
+              // Find the suggested division
+              const suggestedDivision = divisions.find(
+                (d: { id: string; name: string }) => d.name === suggestion.division
+              )
+
+              if (suggestedDivision) {
+                await tx.bid.update({
+                  where: { id: bidId },
+                  data: {
+                    aiSuggestedDivision: JSON.stringify(suggestion),
+                    status: 'PENDING_DIVISION',
+                  },
+                })
+                aiSuggestionApplied = true
+                console.log(`[UPLOAD ${requestId}] AI suggestion applied: ${suggestion.division}`)
+              }
+            } catch (aiError) {
+              // Log AI error but don't fail the upload
+              console.error(`[UPLOAD ${requestId}] AI suggestion failed:`, aiError)
+            }
+          }
+        }
+
+        return { document, aiSuggestionApplied }
+      }, {
+        // Use serializable isolation to prevent concurrent modifications
+        isolationLevel: 'Serializable' as const,
+        maxWait: 5000, // 5 seconds max wait to acquire lock
+        timeout: 30000, // 30 seconds timeout for the transaction
+      })
+    )
+
+    console.log(`[UPLOAD ${requestId}] Upload completed successfully`)
+
     return NextResponse.json({
-      document,
+      document: result.document,
       message: 'File uploaded successfully',
+      aiSuggestionApplied: result.aiSuggestionApplied,
     })
   } catch (error) {
-    console.error('Error uploading file:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[UPLOAD] Error uploading file:', {
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+    })
     return NextResponse.json(
-      { error: 'Failed to upload file' },
+      {
+        error: 'Failed to upload file',
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+      },
       { status: 500 }
     )
   }

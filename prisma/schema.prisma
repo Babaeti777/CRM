@@ -46,6 +46,8 @@ model SubcontractorDivision {
   division        Division      @relation(fields: [divisionId], references: [id], onDelete: Cascade)
 
   @@unique([subcontractorId, divisionId])
+  @@index([subcontractorId])
+  @@index([divisionId])
 }
 
 // Bid model
@@ -66,6 +68,11 @@ model Bid {
   responses             BidResponse[]
   calendarEvents        CalendarEvent[]
   emailThreads          EmailThread[]
+
+  @@index([divisionId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([dueDate])
 }
 
 enum BidStatus {
@@ -88,6 +95,8 @@ model Document {
   uploadedAt  DateTime @default(now())
 
   bid         Bid      @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([bidId])
 }
 
 // Bid Response from Subcontractors
@@ -106,6 +115,9 @@ model BidResponse {
   subcontractor   Subcontractor    @relation(fields: [subcontractorId], references: [id], onDelete: Cascade)
 
   @@unique([bidId, subcontractorId])
+  @@index([bidId])
+  @@index([subcontractorId])
+  @@index([status])
 }
 
 enum ResponseStatus {
@@ -132,6 +144,9 @@ model CalendarEvent {
   updatedAt       DateTime @updatedAt
 
   bid             Bid      @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([bidId])
+  @@index([startTime])
 }
 
 // Email Thread (Outlook Integration)
@@ -147,6 +162,9 @@ model EmailThread {
 
   bid             Bid      @relation(fields: [bidId], references: [id], onDelete: Cascade)
   messages        EmailMessage[]
+
+  @@index([bidId])
+  @@index([lastMessageAt])
 }
 
 model EmailMessage {
@@ -161,6 +179,9 @@ model EmailMessage {
   sentAt          DateTime
 
   thread          EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@index([sentAt])
 }
 
 // NextAuth.js models (required for Prisma adapter)
@@ -181,6 +202,7 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -189,6 +211,8 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model User {

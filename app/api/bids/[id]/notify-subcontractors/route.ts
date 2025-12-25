@@ -1,16 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withDatabaseRetry } from '@/lib/prisma'
 import { sendEmail, createCalendarEvent } from '@/lib/google'
 import { getServerSession } from 'next-auth'
+
+interface NotifyRequestBody {
+  message?: string
+  createEvent?: boolean
+}
+
+/**
+ * Safely parse JSON request body with error handling
+ */
+async function parseRequestBody(request: NextRequest): Promise<{ success: true; data: NotifyRequestBody } | { success: false; error: string }> {
+  try {
+    const data = await request.json()
+    return { success: true, data }
+  } catch (error) {
+    console.error('[NOTIFY] Failed to parse request body:', error)
+    return { success: false, error: 'Invalid JSON in request body' }
+  }
+}
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const requestId = `notify-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  console.log(`[NOTIFY ${requestId}] Starting notification process`)
+
   try {
     // Check authentication and get access token
     const session = await getServerSession()
     if (!session || !session.accessToken) {
+      console.warn(`[NOTIFY ${requestId}] Authentication failed`)
       return NextResponse.json(
         { error: 'Authentication required. Please sign in again.' },
         { status: 401 }
@@ -20,8 +42,14 @@ export async function POST(
     const accessToken = session.accessToken as string
 
     const { id: bidId } = await params
-    const body = await request.json()
-    const { message, createEvent } = body
+    console.log(`[NOTIFY ${requestId}] Processing bid: ${bidId}`)
+
+    // Parse request body with error handling
+    const parseResult = await parseRequestBody(request)
+    if (!parseResult.success) {
+      return NextResponse.json({ error: parseResult.error }, { status: 400 })
+    }
+    const { message, createEvent } = parseResult.data
 
     // Get bid with division and subcontractors
     const bid = await prisma.bid.findUnique({
@@ -69,25 +97,50 @@ export async function POST(
       )
     }
 
-    // Create bid responses for each subcontractor
-    const responses = await Promise.all(
+    // Create bid responses for each subcontractor with error isolation
+    // Using Promise.allSettled to ensure one failure doesn't block others
+    console.log(`[NOTIFY ${requestId}] Creating bid responses for ${subcontractors.length} subcontractors`)
+
+    const responseResults = await Promise.allSettled(
       subcontractors.map((subcontractor: { id: string; name: string; email: string }) =>
-        prisma.bidResponse.upsert({
-          where: {
-            bidId_subcontractorId: {
+        withDatabaseRetry(() =>
+          prisma.bidResponse.upsert({
+            where: {
+              bidId_subcontractorId: {
+                bidId: bid.id,
+                subcontractorId: subcontractor.id,
+              },
+            },
+            create: {
               bidId: bid.id,
               subcontractorId: subcontractor.id,
+              status: 'PENDING',
             },
-          },
-          create: {
-            bidId: bid.id,
-            subcontractorId: subcontractor.id,
-            status: 'PENDING',
-          },
-          update: {},
-        })
+            update: {},
+          })
+        )
       )
     )
+
+    // Process results and log any failures
+    const responses = []
+    const failedResponses = []
+    for (let i = 0; i < responseResults.length; i++) {
+      const result = responseResults[i]
+      if (result.status === 'fulfilled') {
+        responses.push(result.value)
+      } else {
+        failedResponses.push({
+          subcontractor: subcontractors[i],
+          error: result.reason?.message || 'Unknown error',
+        })
+        console.error(`[NOTIFY ${requestId}] Failed to create response for ${subcontractors[i].email}:`, result.reason)
+      }
+    }
+
+    if (failedResponses.length > 0) {
+      console.warn(`[NOTIFY ${requestId}] ${failedResponses.length}/${subcontractors.length} bid responses failed to create`)
+    }
 
     // Send emails to subcontractors
     const emailSubject = `New Bid Opportunity: ${bid.title}`
@@ -155,15 +208,29 @@ export async function POST(
       }
     }
 
+    console.log(`[NOTIFY ${requestId}] Notification process completed successfully`)
+
     return NextResponse.json({
-      message: 'Subcontractors notified successfully',
-      notifiedCount: subcontractors.length,
+      message: failedResponses.length > 0
+        ? `Subcontractors notified with ${failedResponses.length} failures`
+        : 'Subcontractors notified successfully',
+      notifiedCount: responses.length,
+      failedCount: failedResponses.length,
       responses,
+      ...(failedResponses.length > 0 && { failedSubcontractors: failedResponses.map(f => f.subcontractor.email) }),
     })
   } catch (error) {
-    console.error('Error notifying subcontractors:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorStack = error instanceof Error ? error.stack : undefined
+    console.error(`[NOTIFY] Error notifying subcontractors:`, {
+      error: errorMessage,
+      stack: errorStack,
+    })
     return NextResponse.json(
-      { error: 'Failed to notify subcontractors' },
+      {
+        error: 'Failed to notify subcontractors',
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+      },
       { status: 500 }
     )
   }

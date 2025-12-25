@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { validateDatabaseConnection, isDatabaseUrlConfigured } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
 interface ConfigStatus {
   configured: boolean
+  connected?: boolean
+  latencyMs?: number
   error?: string
+  errorCode?: string
   value?: string  // Masked value for debugging
 }
 
@@ -14,7 +18,7 @@ function maskValue(value: string | undefined): string | undefined {
   return value.substring(0, 4) + '...' + value.substring(value.length - 4)
 }
 
-function checkConfig(request: NextRequest): {
+async function checkConfig(request: NextRequest): Promise<{
   database: ConfigStatus
   microsoft: ConfigStatus & { redirectUri?: string }
   openai: ConfigStatus
@@ -25,11 +29,25 @@ function checkConfig(request: NextRequest): {
     appUrl: string | undefined
     host: string | null
   }
-} {
-  const database: ConfigStatus = {
-    configured: !!process.env.DATABASE_URL,
-    error: !process.env.DATABASE_URL ? 'DATABASE_URL not set' : undefined,
+}> {
+  // Check database configuration and actual connectivity
+  const dbUrlConfigured = isDatabaseUrlConfigured()
+  let database: ConfigStatus = {
+    configured: dbUrlConfigured,
+    error: !dbUrlConfigured ? 'DATABASE_URL not set' : undefined,
     value: maskValue(process.env.DATABASE_URL),
+  }
+
+  // If URL is configured, validate actual connectivity
+  if (dbUrlConfigured) {
+    const dbValidation = await validateDatabaseConnection()
+    database = {
+      ...database,
+      connected: dbValidation.connected,
+      latencyMs: dbValidation.latencyMs,
+      error: dbValidation.error,
+      errorCode: dbValidation.errorCode,
+    }
   }
 
   const microsoftConfigured =
@@ -63,11 +81,14 @@ function checkConfig(request: NextRequest): {
     error: !process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY not set' : undefined,
   }
 
+  // Overall health requires database to be both configured AND connected
+  const dbHealthy = database.configured && database.connected !== false
+
   return {
     database,
     microsoft,
     openai,
-    overall: database.configured && microsoft.configured,
+    overall: dbHealthy && microsoft.configured,
     environment: {
       nodeEnv: process.env.NODE_ENV || 'unknown',
       vercelUrl: process.env.VERCEL_URL,
@@ -78,7 +99,7 @@ function checkConfig(request: NextRequest): {
 }
 
 export async function GET(request: NextRequest) {
-  const status = checkConfig(request)
+  const status = await checkConfig(request)
 
   return NextResponse.json({
     status: status.overall ? 'healthy' : 'misconfigured',

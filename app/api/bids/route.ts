@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, withDatabaseRetry } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
 
 // Mark this route as dynamic (not static)
@@ -7,6 +7,19 @@ export const dynamic = 'force-dynamic'
 
 // Valid bid statuses
 const VALID_STATUSES = ['DRAFT', 'PENDING_DIVISION', 'ACTIVE', 'CLOSED', 'AWARDED', 'CANCELLED']
+
+/**
+ * Safely parse JSON request body with error handling
+ */
+async function parseJsonBody<T>(request: NextRequest): Promise<{ success: true; data: T } | { success: false; error: string }> {
+  try {
+    const data = await request.json()
+    return { success: true, data }
+  } catch (error) {
+    console.error('[BIDS API] Failed to parse request body:', error)
+    return { success: false, error: 'Invalid JSON in request body' }
+  }
+}
 
 // GET all bids
 export async function GET(request: NextRequest) {
@@ -55,9 +68,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(bids)
   } catch (error) {
-    console.error('Error fetching bids:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[BIDS API] Error fetching bids:', { error: errorMessage, stack: error instanceof Error ? error.stack : undefined })
     return NextResponse.json(
-      { error: 'Failed to fetch bids' },
+      {
+        error: 'Failed to fetch bids',
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+      },
       { status: 500 }
     )
   }
@@ -75,8 +92,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const body = await request.json()
-    const { title, description, divisionId, dueDate, status } = body
+    // Parse request body with error handling
+    const parseResult = await parseJsonBody<{
+      title?: string
+      description?: string
+      divisionId?: string
+      dueDate?: string
+      status?: string
+    }>(request)
+
+    if (!parseResult.success) {
+      return NextResponse.json({ error: parseResult.error }, { status: 400 })
+    }
+
+    const { title, description, divisionId, dueDate, status } = parseResult.data
 
     // Validate required fields
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
@@ -121,24 +150,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const bid = await prisma.bid.create({
-      data: {
-        title,
-        description,
-        divisionId,
-        dueDate: dueDate ? new Date(dueDate) : null,
-        status: status || 'DRAFT',
-      },
-      include: {
-        division: true,
-      },
-    })
+    const bid = await withDatabaseRetry(() =>
+      prisma.bid.create({
+        data: {
+          title,
+          description,
+          divisionId,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          status: status || 'DRAFT',
+        },
+        include: {
+          division: true,
+        },
+      })
+    )
 
     return NextResponse.json(bid, { status: 201 })
   } catch (error) {
-    console.error('Error creating bid:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[BIDS API] Error creating bid:', { error: errorMessage, stack: error instanceof Error ? error.stack : undefined })
     return NextResponse.json(
-      { error: 'Failed to create bid' },
+      {
+        error: 'Failed to create bid',
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+      },
       { status: 500 }
     )
   }
