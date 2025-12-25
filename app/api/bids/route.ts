@@ -6,8 +6,12 @@ import type { BidStatus } from '@prisma/client'
 // Mark this route as dynamic (not static)
 export const dynamic = 'force-dynamic'
 
-// Valid bid statuses
-const VALID_STATUSES: BidStatus[] = ['DRAFT', 'PENDING_DIVISION', 'ACTIVE', 'CLOSED', 'AWARDED', 'CANCELLED']
+// Valid bid statuses - use const assertion for type narrowing
+const VALID_STATUSES = ['DRAFT', 'PENDING_DIVISION', 'ACTIVE', 'CLOSED', 'AWARDED', 'CANCELLED'] as const
+
+function isValidBidStatus(status: string): status is BidStatus {
+  return (VALID_STATUSES as readonly string[]).includes(status)
+}
 
 /**
  * Safely parse JSON request body with error handling
@@ -39,7 +43,7 @@ export async function GET(request: NextRequest) {
     const divisionId = searchParams.get('divisionId')
 
     // Validate status if provided
-    if (status && !VALID_STATUSES.includes(status)) {
+    if (status && !isValidBidStatus(status)) {
       return NextResponse.json(
         { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` },
         { status: 400 }
@@ -47,7 +51,7 @@ export async function GET(request: NextRequest) {
     }
 
     const where: Record<string, unknown> = {}
-    if (status) where.status = status
+    if (status) where.status = status as BidStatus
     if (divisionId) where.divisionId = divisionId
 
     const bids = await prisma.bid.findMany({
@@ -99,7 +103,7 @@ export async function POST(request: NextRequest) {
       description?: string
       divisionId?: string
       dueDate?: string
-      status?: BidStatus
+      status?: string
     }>(request)
 
     if (!parseResult.success) {
@@ -124,7 +128,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate status if provided
-    if (status && !VALID_STATUSES.includes(status)) {
+    if (status && !isValidBidStatus(status)) {
       return NextResponse.json(
         { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` },
         { status: 400 }
@@ -158,7 +162,7 @@ export async function POST(request: NextRequest) {
           description,
           divisionId,
           dueDate: dueDate ? new Date(dueDate) : null,
-          status: status || 'DRAFT',
+          status: (status as BidStatus) || 'DRAFT',
         },
         include: {
           division: true,
