@@ -12,7 +12,14 @@ export async function GET() {
       console.error('DATABASE_URL not configured')
       return NextResponse.json({
         error: 'Database not configured',
-        message: 'Please set DATABASE_URL in environment variables'
+        message: 'DATABASE_URL environment variable is not set on the server',
+        details: 'The server cannot find DATABASE_URL. This usually means the environment variable was not saved correctly in Vercel, or the app needs to be redeployed.',
+        suggestion: 'Go to Vercel → Settings → Environment Variables → Make sure DATABASE_URL is set for Production → Redeploy (without cache)',
+        debug: {
+          nodeEnv: process.env.NODE_ENV,
+          vercel: process.env.VERCEL,
+          vercelEnv: process.env.VERCEL_ENV,
+        }
       }, { status: 500 })
     }
 
@@ -33,10 +40,32 @@ export async function GET() {
     return NextResponse.json(divisions)
   } catch (error) {
     console.error('Error fetching divisions:', error)
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+    // Provide specific error messages based on the error type
+    let userMessage = 'Database connection failed'
+    let suggestion = 'Check your DATABASE_URL and ensure the database is accessible'
+
+    if (errorMessage.includes('does not exist') || errorMessage.includes('relation')) {
+      userMessage = 'Database tables not found'
+      suggestion = 'Run "npx prisma db push" or "npx prisma migrate deploy" to create the database tables'
+    } else if (errorMessage.includes('connect') || errorMessage.includes('ECONNREFUSED')) {
+      userMessage = 'Cannot connect to database'
+      suggestion = 'Check that your database server is running and DATABASE_URL is correct'
+    } else if (errorMessage.includes('authentication') || errorMessage.includes('password')) {
+      userMessage = 'Database authentication failed'
+      suggestion = 'Check your database username and password in DATABASE_URL'
+    } else if (errorMessage.includes('timeout')) {
+      userMessage = 'Database connection timed out'
+      suggestion = 'Check network connectivity to your database server'
+    }
+
     return NextResponse.json({
-      error: 'Failed to fetch divisions',
-      details: error instanceof Error ? error.message : 'Unknown error',
-      message: 'Make sure DATABASE_URL is set correctly and database is initialized'
+      error: userMessage,
+      details: errorMessage,
+      suggestion: suggestion,
+      message: `${userMessage}. ${suggestion}`
     }, { status: 500 })
   }
 }

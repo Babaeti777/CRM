@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { suggestDivision } from '@/lib/openai'
-import { writeFile, mkdir } from 'fs/promises'
+import { uploadToGoogleDrive } from '@/lib/google-drive'
+import { getServerSession } from 'next-auth'
 import path from 'path'
-import { existsSync } from 'fs'
-import { getCurrentUser } from '@/lib/auth'
 
 // File upload configuration
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -48,13 +47,15 @@ export async function POST(
 ) {
   try {
     // Check authentication
-    const user = await getCurrentUser()
-    if (!user) {
+    const session = await getServerSession()
+    if (!session || !session.accessToken) {
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { error: 'Authentication required. Please sign out and sign in again.' },
         { status: 401 }
       )
     }
+
+    const accessToken = session.accessToken as string
 
     const { id: bidId } = await params
 
@@ -102,25 +103,22 @@ export async function POST(
       )
     }
 
-    // Create uploads directory if it doesn't exist
-    const uploadsDir = path.join(process.cwd(), 'uploads', bidId)
-    if (!existsSync(uploadsDir)) {
-      await mkdir(uploadsDir, { recursive: true })
-    }
-
-    // Save file with timestamped sanitized name
+    // Upload to Google Drive
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
-    const fileName = `${Date.now()}-${sanitizedName}`
-    const filePath = path.join(uploadsDir, fileName)
-    await writeFile(filePath, buffer)
+    const driveFile = await uploadToGoogleDrive(
+      accessToken,
+      buffer,
+      sanitizedName,
+      file.type
+    )
 
     // Create document record
     const document = await prisma.document.create({
       data: {
         bidId,
         fileName: sanitizedName,
-        filePath: filePath,
+        filePath: driveFile.webViewLink, // Store Google Drive URL
         fileSize: file.size,
         mimeType: file.type,
       },

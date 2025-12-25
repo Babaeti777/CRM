@@ -1,14 +1,24 @@
 import OpenAI from 'openai'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Make OpenAI optional - only initialize if API key is present
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null
 
 export async function suggestDivision(
   documentText: string,
   availableDivisions: string[]
 ): Promise<{ division: string; confidence: number; reasoning: string }> {
   try {
+    // If OpenAI not configured, return first division
+    if (!openai) {
+      console.warn('OpenAI API key not configured, skipping AI suggestion')
+      return {
+        division: availableDivisions[0] || 'General',
+        confidence: 0,
+        reasoning: 'OpenAI API key not configured',
+      }
+    }
     const prompt = `You are an AI assistant helping to categorize construction/project bid documents.
 
 Available divisions: ${availableDivisions.join(', ')}

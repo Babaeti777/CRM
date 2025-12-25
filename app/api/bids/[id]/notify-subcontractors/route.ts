@@ -1,35 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { sendEmail, createCalendarEvent } from '@/lib/microsoft-graph'
-import { getCurrentUser, getValidAccessToken } from '@/lib/auth'
+import { sendEmail, createCalendarEvent } from '@/lib/google'
+import { getServerSession } from 'next-auth'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check authentication
-    const user = await getCurrentUser()
-    if (!user) {
+    // Check authentication and get access token
+    const session = await getServerSession()
+    if (!session || !session.accessToken) {
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { error: 'Authentication required. Please sign in again.' },
         { status: 401 }
       )
     }
+
+    const accessToken = session.accessToken as string
 
     const { id: bidId } = await params
     const body = await request.json()
     const { message, createEvent } = body
-
-    // Get valid access token with automatic refresh
-    const tokenResult = await getValidAccessToken()
-    if (!tokenResult.isValid) {
-      return NextResponse.json(
-        { error: 'Valid Microsoft access token required. Please sign in again.' },
-        { status: 401 }
-      )
-    }
-    const accessToken = tokenResult.token!
 
     // Get bid with division and subcontractors
     const bid = await prisma.bid.findUnique({
