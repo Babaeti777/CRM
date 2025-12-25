@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma, withDatabaseRetry } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
+import type { BidStatus } from '@prisma/client'
 
 // Mark this route as dynamic (not static)
 export const dynamic = 'force-dynamic'
 
 // Valid bid statuses
-const VALID_STATUSES = ['DRAFT', 'PENDING_DIVISION', 'ACTIVE', 'CLOSED', 'AWARDED', 'CANCELLED']
+const VALID_STATUSES: BidStatus[] = ['DRAFT', 'PENDING_DIVISION', 'ACTIVE', 'CLOSED', 'AWARDED', 'CANCELLED']
 
 /**
  * Safely parse JSON request body with error handling
@@ -98,7 +99,7 @@ export async function POST(request: NextRequest) {
       description?: string
       divisionId?: string
       dueDate?: string
-      status?: string
+      status?: BidStatus
     }>(request)
 
     if (!parseResult.success) {
