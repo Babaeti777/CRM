@@ -1,12 +1,9 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
-
-const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'CRM Bid Tracking System',
-  description: 'Comprehensive bid and CRM tracking with Microsoft integration',
+  description: 'Comprehensive bid and CRM tracking with Google integration',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -36,7 +33,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="format-detection" content="telephone=no" />
       </head>
-      <body className={inter.className}>{children}</body>
+      <body className="font-sans antialiased">{children}</body>
     </html>
   )
 }

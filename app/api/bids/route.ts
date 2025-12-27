@@ -1,48 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma, withDatabaseRetry } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
-import type { BidStatus } from '@prisma/client'
+import { getBids, createBid, getDivisionById } from '@/lib/db'
+import type { BidStatus } from '@/lib/firebase'
 
-// Mark this route as dynamic (not static)
 export const dynamic = 'force-dynamic'
 
-// Valid bid statuses - use const assertion for type narrowing
-const VALID_STATUSES = ['DRAFT', 'PENDING_DIVISION', 'ACTIVE', 'CLOSED', 'AWARDED', 'CANCELLED'] as const
+const VALID_STATUSES: BidStatus[] = ['DRAFT', 'PENDING_DIVISION', 'ACTIVE', 'CLOSED', 'AWARDED', 'CANCELLED']
 
 function isValidBidStatus(status: string): status is BidStatus {
-  return (VALID_STATUSES as readonly string[]).includes(status)
-}
-
-/**
- * Safely parse JSON request body with error handling
- */
-async function parseJsonBody<T>(request: NextRequest): Promise<{ success: true; data: T } | { success: false; error: string }> {
-  try {
-    const data = await request.json()
-    return { success: true, data }
-  } catch (error) {
-    console.error('[BIDS API] Failed to parse request body:', error)
-    return { success: false, error: 'Invalid JSON in request body' }
-  }
+  return VALID_STATUSES.includes(status as BidStatus)
 }
 
 // GET all bids
 export async function GET(request: NextRequest) {
   try {
-    // Check authentication
     const user = await getCurrentUser()
     if (!user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get('status')
     const divisionId = searchParams.get('divisionId')
 
-    // Validate status if provided
     if (status && !isValidBidStatus(status)) {
       return NextResponse.json(
         { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` },
@@ -50,84 +30,51 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const where: Record<string, unknown> = {}
-    if (status) where.status = status as BidStatus
-    if (divisionId) where.divisionId = divisionId
-
-    const bids = await prisma.bid.findMany({
-      where,
-      include: {
-        division: true,
-        documents: true,
-        responses: {
-          include: {
-            subcontractor: true,
-          },
-        },
-        calendarEvents: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+    const bids = await getBids({
+      status: status as BidStatus | undefined,
+      divisionId: divisionId || undefined,
     })
 
-    return NextResponse.json(bids)
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    console.error('[BIDS API] Error fetching bids:', { error: errorMessage, stack: error instanceof Error ? error.stack : undefined })
-    return NextResponse.json(
-      {
-        error: 'Failed to fetch bids',
-        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
-      },
-      { status: 500 }
+    // Get divisions for each bid
+    const bidsWithDivisions = await Promise.all(
+      bids.map(async (bid) => {
+        const division = await getDivisionById(bid.divisionId)
+        return { ...bid, division }
+      })
     )
+
+    return NextResponse.json(bidsWithDivisions)
+  } catch (error) {
+    console.error('[BIDS API] Error fetching bids:', error)
+    return NextResponse.json({ error: 'Failed to fetch bids' }, { status: 500 })
   }
 }
 
 // POST create new bid
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication
     const user = await getCurrentUser()
     if (!user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    // Parse request body with error handling
-    const parseResult = await parseJsonBody<{
-      title?: string
-      description?: string
-      divisionId?: string
-      dueDate?: string
-      status?: string
-    }>(request)
-
-    if (!parseResult.success) {
-      return NextResponse.json({ error: parseResult.error }, { status: 400 })
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
     }
 
-    const { title, description, divisionId, dueDate, status } = parseResult.data
+    const { title, description, divisionId, dueDate, status } = body
 
-    // Validate required fields
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
-      return NextResponse.json(
-        { error: 'Title is required and must be a non-empty string' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Title is required' }, { status: 400 })
     }
 
     if (!divisionId || typeof divisionId !== 'string') {
-      return NextResponse.json(
-        { error: 'Division ID is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Division ID is required' }, { status: 400 })
     }
 
-    // Validate status if provided
     if (status && !isValidBidStatus(status)) {
       return NextResponse.json(
         { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` },
@@ -135,51 +82,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate due date if provided
-    if (dueDate && isNaN(Date.parse(dueDate))) {
-      return NextResponse.json(
-        { error: 'Invalid due date format' },
-        { status: 400 }
-      )
+    // Verify division exists
+    const division = await getDivisionById(divisionId)
+    if (!division) {
+      return NextResponse.json({ error: 'Division not found' }, { status: 404 })
     }
 
-    // Verify division exists
-    const division = await prisma.division.findUnique({
-      where: { id: divisionId },
+    const bid = await createBid({
+      title: title.trim(),
+      description,
+      divisionId,
+      dueDate: dueDate ? new Date(dueDate) : undefined,
+      status: status || 'DRAFT',
     })
 
-    if (!division) {
-      return NextResponse.json(
-        { error: 'Division not found' },
-        { status: 404 }
-      )
-    }
-
-    const bid = await withDatabaseRetry(() =>
-      prisma.bid.create({
-        data: {
-          title,
-          description,
-          divisionId,
-          dueDate: dueDate ? new Date(dueDate) : null,
-          status: (status as BidStatus) || 'DRAFT',
-        },
-        include: {
-          division: true,
-        },
-      })
-    )
-
-    return NextResponse.json(bid, { status: 201 })
+    return NextResponse.json({ ...bid, division }, { status: 201 })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    console.error('[BIDS API] Error creating bid:', { error: errorMessage, stack: error instanceof Error ? error.stack : undefined })
-    return NextResponse.json(
-      {
-        error: 'Failed to create bid',
-        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
-      },
-      { status: 500 }
-    )
+    console.error('[BIDS API] Error creating bid:', error)
+    return NextResponse.json({ error: 'Failed to create bid' }, { status: 500 })
   }
 }

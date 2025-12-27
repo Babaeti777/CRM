@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/auth'
+import { getBidWithDetails, updateBid, deleteBid, getBidById } from '@/lib/db'
 
 // GET single bid
 export async function GET(
@@ -8,40 +8,26 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check authentication
     const user = await getCurrentUser()
     if (!user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
     const { id } = await params
-    const bid = await prisma.bid.findUnique({
-      where: { id },
-      include: {
-        division: true,
-        documents: true,
-        responses: {
-          include: {
-            subcontractor: true,
-          },
-        },
-      },
-    })
+    const result = await getBidWithDetails(id)
 
-    if (!bid) {
+    if (!result) {
       return NextResponse.json({ error: 'Bid not found' }, { status: 404 })
     }
 
-    return NextResponse.json(bid)
+    return NextResponse.json({
+      ...result.bid,
+      division: result.division,
+      responses: result.responses,
+    })
   } catch (error) {
-    console.error('Error fetching bid:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch bid' },
-      { status: 500 }
-    )
+    console.error('[BID API] Error fetching bid:', error)
+    return NextResponse.json({ error: 'Failed to fetch bid' }, { status: 500 })
   }
 }
 
@@ -51,59 +37,42 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check authentication
     const user = await getCurrentUser()
     if (!user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
     const { id } = await params
-    const body = await request.json()
-    const {
-      title,
-      description,
-      divisionId,
-      status,
-      dueDate,
-      divisionConfirmed,
-      aiSuggestedDivision,
-    } = body
 
-    const updateData: any = {}
+    // Check if bid exists
+    const existingBid = await getBidById(id)
+    if (!existingBid) {
+      return NextResponse.json({ error: 'Bid not found' }, { status: 404 })
+    }
+
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    }
+
+    const { title, description, divisionId, status, dueDate, divisionConfirmed, aiSuggestedDivision } = body
+
+    const updateData: Record<string, unknown> = {}
     if (title !== undefined) updateData.title = title
     if (description !== undefined) updateData.description = description
     if (divisionId !== undefined) updateData.divisionId = divisionId
     if (status !== undefined) updateData.status = status
     if (dueDate !== undefined) updateData.dueDate = new Date(dueDate)
-    if (divisionConfirmed !== undefined)
-      updateData.divisionConfirmed = divisionConfirmed
-    if (aiSuggestedDivision !== undefined)
-      updateData.aiSuggestedDivision = aiSuggestedDivision
+    if (divisionConfirmed !== undefined) updateData.divisionConfirmed = divisionConfirmed
+    if (aiSuggestedDivision !== undefined) updateData.aiSuggestedDivision = aiSuggestedDivision
 
-    const bid = await prisma.bid.update({
-      where: { id },
-      data: updateData,
-      include: {
-        division: true,
-        documents: true,
-        responses: {
-          include: {
-            subcontractor: true,
-          },
-        },
-      },
-    })
-
+    const bid = await updateBid(id, updateData)
     return NextResponse.json(bid)
   } catch (error) {
-    console.error('Error updating bid:', error)
-    return NextResponse.json(
-      { error: 'Failed to update bid' },
-      { status: 500 }
-    )
+    console.error('[BID API] Error updating bid:', error)
+    return NextResponse.json({ error: 'Failed to update bid' }, { status: 500 })
   }
 }
 
@@ -113,26 +82,23 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check authentication
     const user = await getCurrentUser()
     if (!user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
     const { id } = await params
-    await prisma.bid.delete({
-      where: { id },
-    })
 
+    // Check if bid exists
+    const existingBid = await getBidById(id)
+    if (!existingBid) {
+      return NextResponse.json({ error: 'Bid not found' }, { status: 404 })
+    }
+
+    await deleteBid(id)
     return NextResponse.json({ message: 'Bid deleted successfully' })
   } catch (error) {
-    console.error('Error deleting bid:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete bid' },
-      { status: 500 }
-    )
+    console.error('[BID API] Error deleting bid:', error)
+    return NextResponse.json({ error: 'Failed to delete bid' }, { status: 500 })
   }
 }

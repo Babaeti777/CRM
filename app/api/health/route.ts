@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateDatabaseConnection, isDatabaseUrlConfigured } from '@/lib/prisma'
+import { validateFirebaseConnection, isFirebaseConfigured } from '@/lib/firebase'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,11 +8,10 @@ interface ConfigStatus {
   connected?: boolean
   latencyMs?: number
   error?: string
-  errorCode?: string
 }
 
 async function checkConfig(request: NextRequest): Promise<{
-  database: ConfigStatus
+  firebase: ConfigStatus
   google: ConfigStatus
   openai: ConfigStatus
   overall: boolean
@@ -23,22 +22,21 @@ async function checkConfig(request: NextRequest): Promise<{
     host: string | null
   }
 }> {
-  // Check database configuration and actual connectivity
-  const dbUrlConfigured = isDatabaseUrlConfigured()
-  let database: ConfigStatus = {
-    configured: dbUrlConfigured,
-    error: !dbUrlConfigured ? 'DATABASE_URL not set' : undefined,
+  // Check Firebase configuration and actual connectivity
+  const firebaseConfigured = isFirebaseConfigured()
+  let firebase: ConfigStatus = {
+    configured: firebaseConfigured,
+    error: !firebaseConfigured ? 'FIREBASE_SERVICE_ACCOUNT_KEY not set' : undefined,
   }
 
-  // If URL is configured, validate actual connectivity
-  if (dbUrlConfigured) {
-    const dbValidation = await validateDatabaseConnection()
-    database = {
-      ...database,
-      connected: dbValidation.connected,
-      latencyMs: dbValidation.latencyMs,
-      error: dbValidation.error,
-      errorCode: dbValidation.errorCode,
+  // If configured, validate actual connectivity
+  if (firebaseConfigured) {
+    const fbValidation = await validateFirebaseConnection()
+    firebase = {
+      ...firebase,
+      connected: fbValidation.connected,
+      latencyMs: fbValidation.latencyMs,
+      error: fbValidation.error,
     }
   }
 
@@ -64,14 +62,14 @@ async function checkConfig(request: NextRequest): Promise<{
     error: !process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY not set' : undefined,
   }
 
-  // Overall health requires database to be both configured AND connected
-  const dbHealthy = database.configured && database.connected !== false
+  // Overall health requires Firebase to be both configured AND connected
+  const fbHealthy = firebase.configured && firebase.connected !== false
 
   return {
-    database,
+    firebase,
     google,
     openai,
-    overall: dbHealthy && google.configured,
+    overall: fbHealthy && google.configured,
     environment: {
       nodeEnv: process.env.NODE_ENV || 'unknown',
       vercelUrl: process.env.VERCEL_URL,
@@ -89,7 +87,7 @@ export async function GET(request: NextRequest) {
     timestamp: new Date().toISOString(),
     environment: status.environment,
     config: {
-      database: status.database,
+      firebase: status.firebase,
       google: status.google,
       openai: status.openai,
     },
@@ -102,7 +100,7 @@ export async function GET(request: NextRequest) {
             '3. Redeploy your application after adding variables',
           ],
           required: [
-            'DATABASE_URL - PostgreSQL connection string',
+            'FIREBASE_SERVICE_ACCOUNT_KEY - Firebase service account JSON (base64 encoded)',
             'GOOGLE_CLIENT_ID - Google OAuth Client ID',
             'GOOGLE_CLIENT_SECRET - Google OAuth Client Secret',
             'NEXTAUTH_SECRET - NextAuth secret for JWT signing',

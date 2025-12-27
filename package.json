@@ -4,18 +4,14 @@
   "description": "Bid and CRM tracking system with Google integration",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "db:push": "prisma db push",
-    "db:studio": "prisma studio",
-    "db:generate": "prisma generate",
-    "postinstall": "prisma generate",
-    "vercel-build": "prisma generate && prisma db push && next build"
+    "lint": "next lint"
   },
   "dependencies": {
-    "@prisma/client": "^5.7.1",
     "autoprefixer": "^10.4.16",
+    "firebase": "^10.7.1",
+    "firebase-admin": "^12.0.0",
     "googleapis": "^169.0.0",
     "next": "^14.0.4",
     "next-auth": "^4.24.13",
@@ -31,7 +27,6 @@
     "@types/react-dom": "^18.2.18",
     "eslint": "^8.56.0",
     "eslint-config-next": "^14.0.4",
-    "prisma": "^5.7.1",
     "typescript": "^5.3.3"
   }
 }

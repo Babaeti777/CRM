@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getCurrentUser } from '@/lib/auth'
+import { updateBidResponse, getBidResponseById, getBidById, getSubcontractorById } from '@/lib/db'
 
 // PATCH update response
 export async function PATCH(
@@ -7,8 +8,26 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
     const { id } = await params
-    const body = await request.json()
+
+    // Check if response exists
+    const existing = await getBidResponseById(id)
+    if (!existing) {
+      return NextResponse.json({ error: 'Response not found' }, { status: 404 })
+    }
+
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    }
+
     const { status, amount, notes } = body
 
     const updateData: Record<string, unknown> = {}
@@ -20,21 +39,21 @@ export async function PATCH(
       updateData.submittedAt = new Date()
     }
 
-    const response = await prisma.bidResponse.update({
-      where: { id },
-      data: updateData,
-      include: {
-        bid: true,
-        subcontractor: true,
-      },
-    })
+    const response = await updateBidResponse(id, updateData)
 
-    return NextResponse.json(response)
+    // Get bid and subcontractor for response
+    const [bid, subcontractor] = await Promise.all([
+      getBidById(response!.bidId),
+      getSubcontractorById(response!.subcontractorId),
+    ])
+
+    return NextResponse.json({
+      ...response,
+      bid,
+      subcontractor,
+    })
   } catch (error) {
-    console.error('Error updating response:', error)
-    return NextResponse.json(
-      { error: 'Failed to update response' },
-      { status: 500 }
-    )
+    console.error('[RESPONSE API] Error:', error)
+    return NextResponse.json({ error: 'Failed to update response' }, { status: 500 })
   }
 }

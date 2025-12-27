@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma, withDatabaseRetry } from '@/lib/prisma'
-import { sendEmail, createCalendarEvent } from '@/lib/google'
+import { getBidById, getDivisionById, getSubcontractors, upsertBidResponse, createEmailThread, createCalendarEvent } from '@/lib/db'
+import { sendEmail, createCalendarEvent as createGoogleCalendarEvent } from '@/lib/google'
 import { getServerSession } from 'next-auth'
 
 interface NotifyRequestBody {
@@ -51,28 +51,15 @@ export async function POST(
     }
     const { message, createEvent } = parseResult.data
 
-    // Get bid with division and subcontractors
-    const bid = await prisma.bid.findUnique({
-      where: { id: bidId },
-      include: {
-        division: {
-          include: {
-            subcontractors: {
-              include: {
-                subcontractor: true,
-              },
-            },
-          },
-        },
-        documents: true,
-      },
-    })
-
+    // Get bid
+    const bid = await getBidById(bidId)
     if (!bid) {
       return NextResponse.json({ error: 'Bid not found' }, { status: 404 })
     }
 
-    if (!bid.division) {
+    // Get division
+    const division = await getDivisionById(bid.divisionId)
+    if (!division) {
       return NextResponse.json(
         { error: 'Bid division not found' },
         { status: 404 }
@@ -86,9 +73,8 @@ export async function POST(
       )
     }
 
-    const subcontractors = bid.division.subcontractors.map(
-      (sc: { subcontractor: { id: string; name: string; email: string; phone: string | null; company: string | null } }) => sc.subcontractor
-    )
+    // Get subcontractors for this division
+    const subcontractors = await getSubcontractors({ divisionId: bid.divisionId })
 
     if (subcontractors.length === 0) {
       return NextResponse.json(
@@ -102,23 +88,12 @@ export async function POST(
     console.log(`[NOTIFY ${requestId}] Creating bid responses for ${subcontractors.length} subcontractors`)
 
     const responseResults = await Promise.allSettled(
-      subcontractors.map((subcontractor: { id: string; name: string; email: string }) =>
-        withDatabaseRetry(() =>
-          prisma.bidResponse.upsert({
-            where: {
-              bidId_subcontractorId: {
-                bidId: bid.id,
-                subcontractorId: subcontractor.id,
-              },
-            },
-            create: {
-              bidId: bid.id,
-              subcontractorId: subcontractor.id,
-              status: 'PENDING',
-            },
-            update: {},
-          })
-        )
+      subcontractors.map((subcontractor) =>
+        upsertBidResponse({
+          bidId: bid.id,
+          subcontractorId: subcontractor.id,
+          status: 'PENDING',
+        })
       )
     )
 
@@ -147,27 +122,23 @@ export async function POST(
     const emailBody = `
       <h2>${bid.title}</h2>
       <p>${bid.description || ''}</p>
-      <p><strong>Division:</strong> ${bid.division.name}</p>
+      <p><strong>Division:</strong> ${division.name}</p>
       ${bid.dueDate ? `<p><strong>Due Date:</strong> ${new Date(bid.dueDate).toLocaleDateString()}</p>` : ''}
       <p>${message || 'Please review this bid opportunity and respond at your earliest convenience.'}</p>
-      <p>Documents attached: ${bid.documents.length}</p>
     `
 
     try {
       await sendEmail(accessToken, {
-        to: subcontractors.map((sc: { email: string }) => sc.email),
+        to: subcontractors.map((sc) => sc.email),
         subject: emailSubject,
         body: emailBody,
       })
 
       // Create email thread record
-      await prisma.emailThread.create({
-        data: {
-          bidId: bid.id,
-          subject: emailSubject,
-          recipients: subcontractors.map((sc: { email: string }) => sc.email),
-          lastMessageAt: new Date(),
-        },
+      await createEmailThread({
+        bidId: bid.id,
+        subject: emailSubject,
+        recipients: subcontractors.map((sc) => sc.email),
       })
     } catch (emailError) {
       console.error('Error sending emails:', emailError)
@@ -183,25 +154,23 @@ export async function POST(
         const eventEnd = new Date(eventStart)
         eventEnd.setHours(10, 0, 0, 0)
 
-        const calendarEvent = await createCalendarEvent(accessToken, {
+        const googleEvent = await createGoogleCalendarEvent(accessToken, {
           subject: `Bid Due: ${bid.title}`,
           body: `Reminder: Bid responses due for ${bid.title}`,
           start: eventStart,
           end: eventEnd,
-          attendees: subcontractors.map((sc: { email: string }) => sc.email),
+          attendees: subcontractors.map((sc) => sc.email),
         })
 
         // Save calendar event to database
-        await prisma.calendarEvent.create({
-          data: {
-            bidId: bid.id,
-            msEventId: calendarEvent.id,
-            title: `Bid Due: ${bid.title}`,
-            description: `Reminder: Bid responses due for ${bid.title}`,
-            startTime: eventStart,
-            endTime: eventEnd,
-            attendees: subcontractors.map((sc: { email: string }) => sc.email),
-          },
+        await createCalendarEvent({
+          bidId: bid.id,
+          googleEventId: googleEvent.id || undefined,
+          title: `Bid Due: ${bid.title}`,
+          description: `Reminder: Bid responses due for ${bid.title}`,
+          startTime: eventStart,
+          endTime: eventEnd,
+          attendees: subcontractors.map((sc) => sc.email),
         })
       } catch (eventError) {
         console.error('Error creating calendar event:', eventError)
