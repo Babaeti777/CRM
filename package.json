@@ -1,7 +1,7 @@
 {
   "name": "crm-bid-tracking-system",
   "version": "1.0.0",
-  "description": "Bid and CRM tracking system with Microsoft integration",
+  "description": "Bid and CRM tracking system with Google integration",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -14,8 +14,6 @@
     "vercel-build": "prisma generate && prisma db push && next build"
   },
   "dependencies": {
-    "@azure/msal-node": "^2.5.0",
-    "@microsoft/microsoft-graph-client": "^3.0.7",
     "@prisma/client": "^5.7.1",
     "autoprefixer": "^10.4.16",
     "googleapis": "^169.0.0",
