@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
-import { getBids, createBid, getDivisionById } from '@/lib/db'
+import { getBids, createBid, getDivisionById, getBidResponses } from '@/lib/db'
 import type { BidStatus } from '@/lib/firebase'
+import { isFirebaseConfigured } from '@/lib/firebase'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,13 @@ function isValidBidStatus(status: string): status is BidStatus {
 // GET all bids
 export async function GET(request: NextRequest) {
   try {
+    if (!isFirebaseConfigured()) {
+      return NextResponse.json(
+        { error: 'Database not configured', message: 'Please set Firebase environment variables' },
+        { status: 503 }
+      )
+    }
+
     const user = await getCurrentUser()
     if (!user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
@@ -35,15 +43,23 @@ export async function GET(request: NextRequest) {
       divisionId: divisionId || undefined,
     })
 
-    // Get divisions for each bid
-    const bidsWithDivisions = await Promise.all(
+    // Get divisions and responses for each bid
+    const bidsWithDetails = await Promise.all(
       bids.map(async (bid) => {
-        const division = await getDivisionById(bid.divisionId)
-        return { ...bid, division }
+        const [division, responses] = await Promise.all([
+          getDivisionById(bid.divisionId),
+          getBidResponses({ bidId: bid.id }),
+        ])
+        return {
+          ...bid,
+          division,
+          documents: [], // No file storage needed
+          responses,
+        }
       })
     )
 
-    return NextResponse.json(bidsWithDivisions)
+    return NextResponse.json(bidsWithDetails)
   } catch (error) {
     console.error('[BIDS API] Error fetching bids:', error)
     return NextResponse.json({ error: 'Failed to fetch bids' }, { status: 500 })
@@ -53,6 +69,10 @@ export async function GET(request: NextRequest) {
 // POST create new bid
 export async function POST(request: NextRequest) {
   try {
+    if (!isFirebaseConfigured()) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 503 })
+    }
+
     const user = await getCurrentUser()
     if (!user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })

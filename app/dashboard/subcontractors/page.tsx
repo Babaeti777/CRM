@@ -72,10 +72,10 @@ export default function Subcontractors() {
           <div className="text-center py-12">Loading...</div>
         ) : error ? (
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-2xl mx-auto">
-            <h2 className="text-xl font-bold text-red-900 mb-2">Database Error</h2>
+            <h2 className="text-xl font-bold text-red-900 mb-2">Error</h2>
             <p className="text-red-700 mb-4">{error}</p>
             <p className="text-sm text-red-600">
-              Make sure DATABASE_URL is set in your Vercel environment variables.
+              Please check your Firebase configuration and try again.
             </p>
           </div>
         ) : subcontractors.length === 0 ? (

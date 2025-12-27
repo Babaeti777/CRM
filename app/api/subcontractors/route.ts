@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getSubcontractors, createSubcontractor, getSubcontractorByEmail, getDivisionById, getBidResponses } from '@/lib/db'
+import { isFirebaseConfigured } from '@/lib/firebase'
 
 export const dynamic = 'force-dynamic'
 
 // GET all subcontractors
 export async function GET(request: NextRequest) {
   try {
+    if (!isFirebaseConfigured()) {
+      return NextResponse.json(
+        { error: 'Database not configured', message: 'Please set Firebase environment variables' },
+        { status: 503 }
+      )
+    }
+
     const user = await getCurrentUser()
     if (!user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
@@ -44,6 +52,10 @@ export async function GET(request: NextRequest) {
 // POST create new subcontractor
 export async function POST(request: NextRequest) {
   try {
+    if (!isFirebaseConfigured()) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 503 })
+    }
+
     const user = await getCurrentUser()
     if (!user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
